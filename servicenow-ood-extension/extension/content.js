@@ -15,7 +15,6 @@
 (function () {
   "use strict";
 
-  const BUTTON_ID = "rc-copilot-btn";
   const PANEL_ID = "rc-copilot-panel";
   const MAX_ACTIVITY_CHARS = 4000;
 

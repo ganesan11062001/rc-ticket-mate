@@ -2,7 +2,10 @@
    someone else's document and their CSS is broad. `all: initial` on the roots
    stops ServiceNow's resets leaking in. */
 
-#rc-copilot-btn,
+/* Tokens must be declared on BOTH roots: the rail is a sibling of the panel,
+   not a descendant, so it cannot inherit them. Naming a stale id here silently
+   breaks every var() on that element. */
+#rc-copilot-rail,
 #rc-copilot-panel {
   --rc-accent: #c8102e;
   --rc-accent-600: #a80d26;
