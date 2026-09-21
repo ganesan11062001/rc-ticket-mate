@@ -1,0 +1,67 @@
+---
+<%-
+  hours  = bc_num_hours.to_i
+  part   = partition.to_s
+  layout = gpu_layout.to_s
+
+  model = rc_model.to_s
+
+  # GLM-4.5-Air does not fit in anything smaller, so don't let the form produce
+  # a combination that is guaranteed to OOM at load.
+  layout = "4x" if model == "air"
+
+  # The 3B test model is ~6 GB. Asking for a specific A100 would make it queue
+  # for no reason, so take any free GPU and a fraction of the CPU/RAM.
+  layout = "small" if model == "small"
+
+  case layout
+  when "small"
+    gres       = "gpu:1"
+    constraint = ""
+    mem        = 32
+    cpus       = 8
+  when "1x80"
+    # Weights are ~56 GiB on one card, so a 40GB A100 cannot hold them at all.
+    gres       = "gpu:a100:1"
+    constraint = "a100@80g"
+    mem        = 120
+    cpus       = 16
+  when "4x"
+    gres       = "gpu:a100:4"
+    constraint = ""
+    mem        = 380
+    cpus       = 16
+  else
+    gres       = "gpu:a100:2"
+    constraint = ""
+    mem        = 200
+    cpus       = 16
+  end
+
+  # Every general-access GPU partition caps GRES at one GPU per job, so asking
+  # for more anywhere but multigpu is rejected with QOSMaxGRESPerJob. Redirect
+  # it, so the failure is an honest "you need multigpu access" instead.
+  part = "multigpu" if ["2x", "4x"].include?(layout)
+
+  # Partition time ceilings, per https://rc.northeastern.edu/partitions .
+  # The form's data-max-bc-num-hours already does this in the browser; this is
+  # the backstop for a cached or hand-edited value.
+  max_hours = { "gpu-interactive" => 2, "gpu-short" => 2, "gpu" => 8,
+                "multigpu" => 24 }.fetch(part, 2)
+  hours = max_hours if hours > max_hours
+  hours = 1 if hours < 1
+-%>
+batch_connect:
+  template: "basic"
+
+script:
+  native:
+    - "--partition=<%= part %>"
+    - "--gres=<%= gres %>"
+<%- unless constraint.empty? -%>
+    - "--constraint=<%= constraint %>"
+<%- end -%>
+    - "--cpus-per-task=<%= cpus %>"
+    - "--mem=<%= mem %>G"
+    - "--time=<%= hours %>:00:00"
+    - "--job-name=rc-copilot"

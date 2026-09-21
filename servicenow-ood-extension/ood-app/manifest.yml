@@ -1,0 +1,13 @@
+---
+name: RC Copilot
+icon: fa://robot
+category: Standard Apps
+subcategory: RC Tools
+role: batch_connect
+description: |
+  Drafts replies to ServiceNow tickets using a private LLM (GLM) served by vLLM
+  inside your own Slurm allocation. Nothing leaves Northeastern.
+
+  Launch this, then open a ticket in Service Hub and click "Draft reply". The
+  browser extension picks up this session's address and token automatically —
+  there is nothing to copy or paste.

@@ -1,0 +1,1 @@
+"""RC Copilot backend package."""

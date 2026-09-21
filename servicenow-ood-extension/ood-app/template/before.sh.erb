@@ -1,0 +1,18 @@
+# Runs on the compute node before script.sh. Whatever is exported here is what
+# Open OnDemand writes into connection.yml — which is the whole point: OOD, not
+# us, owns the host/port/password, and the browser extension reads them back
+# from the session's connect card.
+
+# Export the module function if it exists (matches the other RC apps).
+[[ $(type -t module) == "function" ]] && export -f module
+
+# find_port and create_passwd are provided by OOD's batch_connect framework.
+export port=$(find_port)
+
+# Becomes AUTH_TOKEN for rc-copilot. OOD only ever shows it on the session card
+# of the user who owns the job, which is the security model we want: the token
+# never touches the group-readable /projects filesystem.
+export password="$(create_passwd)"
+
+# vLLM stays on loopback — only rc-copilot talks to it.
+export VLLM_PORT=$(find_port)

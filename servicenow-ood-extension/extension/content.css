@@ -1,0 +1,359 @@
+/* Injected into ServiceNow. Every rule is id-scoped and over-specified: this is
+   someone else's document and their CSS is broad. `all: initial` on the roots
+   stops ServiceNow's resets leaking in. */
+
+#rc-copilot-btn,
+#rc-copilot-panel {
+  --rc-accent: #c8102e;
+  --rc-accent-600: #a80d26;
+  --rc-accent-700: #8a0a1f;
+
+  --rc-surface: #ffffff;
+  --rc-sunken: #f5f7fa;
+  --rc-line: #e3e8ef;
+  --rc-line-strong: #cdd5e0;
+
+  --rc-ink: #111827;
+  --rc-ink-2: #4b5563;
+  --rc-ink-3: #8b95a5;
+
+  --rc-ok: #15803d;   --rc-ok-bg: #ecfdf3;   --rc-ok-line: #86efac;
+  --rc-warn: #a16207; --rc-warn-bg: #fffbeb; --rc-warn-line: #fcd34d;
+  --rc-bad: #b42318;  --rc-bad-bg: #fef3f2;  --rc-bad-line: #fda29b;
+  --rc-info: #175cd3; --rc-info-bg: #eff8ff; --rc-info-line: #b2ddff;
+
+  --rc-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --rc-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --rc-shadow: 0 8px 28px rgba(16, 24, 40, .16), 0 2px 6px rgba(16, 24, 40, .08);
+}
+
+/* ---------- floating action button ---------- */
+
+button#rc-copilot-btn.rc-fab {
+  all: initial;
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483646;
+
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 18px 11px 15px;
+
+  border-radius: 999px;
+  background: linear-gradient(145deg, var(--rc-accent), var(--rc-accent-700));
+  color: #fff;
+  font: 600 13.5px/1 var(--rc-sans);
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(200, 16, 46, .34), 0 2px 5px rgba(0, 0, 0, .14);
+  transition: transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s ease, filter .16s ease;
+}
+
+button#rc-copilot-btn.rc-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(200, 16, 46, .42), 0 3px 8px rgba(0, 0, 0, .16);
+  filter: brightness(1.05);
+}
+button#rc-copilot-btn.rc-fab:active { transform: translateY(0); }
+button#rc-copilot-btn.rc-fab:focus-visible {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--rc-accent);
+}
+
+/* the three-bar mark, drawn in CSS so there is no asset to load */
+button#rc-copilot-btn.rc-fab .rc-ico {
+  position: relative;
+  width: 15px; height: 13px;
+  flex: none;
+}
+button#rc-copilot-btn.rc-fab .rc-ico::before,
+button#rc-copilot-btn.rc-fab .rc-ico::after {
+  content: "";
+  position: absolute; left: 0;
+  height: 2.5px; border-radius: 2px; background: #fff;
+}
+button#rc-copilot-btn.rc-fab .rc-ico::before { top: 2px;  width: 15px; }
+button#rc-copilot-btn.rc-fab .rc-ico::after  { top: 8px;  width: 9px;  }
+
+button#rc-copilot-btn.rc-fab[disabled] {
+  cursor: progress;
+  filter: saturate(.5) brightness(.95);
+}
+/* spinning ring replaces the mark while working */
+button#rc-copilot-btn.rc-fab[disabled] .rc-ico::before,
+button#rc-copilot-btn.rc-fab[disabled] .rc-ico::after { display: none; }
+button#rc-copilot-btn.rc-fab[disabled] .rc-ico {
+  border: 2.5px solid rgba(255,255,255,.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  width: 13px; height: 13px;
+  animation: rc-spin .7s linear infinite;
+}
+@keyframes rc-spin { to { transform: rotate(360deg); } }
+
+/* ---------- panel ---------- */
+
+div#rc-copilot-panel.rc-panel {
+  all: initial;
+  position: fixed;
+  right: 20px;
+  bottom: 78px;
+  z-index: 2147483647;
+  display: none;
+
+  box-sizing: border-box;
+  width: 404px;
+  max-width: calc(100vw - 40px);
+  max-height: min(74vh, 720px);
+
+  background: var(--rc-surface);
+  border: 1px solid var(--rc-line);
+  border-radius: 16px;
+  box-shadow: var(--rc-shadow);
+
+  font: 400 13px/1.55 var(--rc-sans);
+  color: var(--rc-ink);
+  text-align: left;
+  overflow: hidden;
+  animation: rc-in .2s cubic-bezier(.2,.8,.3,1);
+}
+
+div#rc-copilot-panel.rc-panel[data-open="1"] { display: flex; flex-direction: column; }
+
+@keyframes rc-in {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+div#rc-copilot-panel .rc-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--rc-line);
+  background: var(--rc-sunken);
+  flex: none;
+}
+
+div#rc-copilot-panel .rc-badge-mark {
+  width: 22px; height: 22px; border-radius: 6px; flex: none; position: relative;
+  background: linear-gradient(145deg, var(--rc-accent), var(--rc-accent-700));
+}
+div#rc-copilot-panel .rc-badge-mark::before,
+div#rc-copilot-panel .rc-badge-mark::after {
+  content: ""; position: absolute; left: 5px; height: 2px; border-radius: 2px; background: #fff;
+}
+div#rc-copilot-panel .rc-badge-mark::before { top: 7px;  width: 12px; }
+div#rc-copilot-panel .rc-badge-mark::after  { top: 12px; width: 7px;  }
+
+div#rc-copilot-panel .rc-title {
+  font: 650 12.5px/1 var(--rc-sans);
+  letter-spacing: -0.01em;
+  color: var(--rc-ink);
+  flex: 1;
+}
+
+div#rc-copilot-panel .rc-close {
+  all: initial;
+  cursor: pointer;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--rc-ink-3);
+  font: 400 17px/1 var(--rc-sans);
+  transition: background .14s ease, color .14s ease;
+}
+div#rc-copilot-panel .rc-close:hover { background: rgba(0,0,0,.06); color: var(--rc-ink); }
+
+div#rc-copilot-panel .rc-body {
+  padding: 14px;
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: thin;
+}
+div#rc-copilot-panel .rc-body::-webkit-scrollbar { width: 9px; }
+div#rc-copilot-panel .rc-body::-webkit-scrollbar-thumb {
+  background: var(--rc-line-strong); border-radius: 99px;
+  border: 3px solid var(--rc-surface);
+}
+
+/* ---------- messages ---------- */
+
+div#rc-copilot-panel .rc-msg {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  font-size: 12.5px;
+  display: flex; gap: 8px; align-items: flex-start;
+}
+div#rc-copilot-panel .rc-msg::before { font-weight: 700; flex: none; }
+div#rc-copilot-panel .rc-ok    { background: var(--rc-ok-bg);   color: var(--rc-ok);   border-color: var(--rc-ok-line); }
+div#rc-copilot-panel .rc-ok::before { content: "✓"; }
+div#rc-copilot-panel .rc-info  { background: var(--rc-info-bg); color: var(--rc-info); border-color: var(--rc-info-line); }
+div#rc-copilot-panel .rc-warn  { background: var(--rc-warn-bg); color: var(--rc-warn); border-color: var(--rc-warn-line); }
+div#rc-copilot-panel .rc-warn::before { content: "!"; }
+div#rc-copilot-panel .rc-error { background: var(--rc-bad-bg);  color: var(--rc-bad);  border-color: var(--rc-bad-line); }
+div#rc-copilot-panel .rc-error::before { content: "×"; }
+
+/* working state */
+div#rc-copilot-panel .rc-working { display: flex; align-items: center; gap: 10px; padding: 6px 0 14px; }
+div#rc-copilot-panel .rc-spin {
+  width: 16px; height: 16px; flex: none;
+  border: 2.5px solid var(--rc-line-strong);
+  border-top-color: var(--rc-accent);
+  border-radius: 50%;
+  animation: rc-spin .7s linear infinite;
+}
+div#rc-copilot-panel .rc-working-text { font-size: 12.5px; color: var(--rc-ink-2); }
+
+/* skeleton lines hint at what is coming */
+div#rc-copilot-panel .rc-skel { height: 9px; border-radius: 5px; margin-bottom: 8px;
+  background: linear-gradient(90deg, var(--rc-sunken) 25%, var(--rc-line) 37%, var(--rc-sunken) 63%);
+  background-size: 400% 100%;
+  animation: rc-shimmer 1.4s ease infinite;
+}
+@keyframes rc-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+/* ---------- confidence meter ---------- */
+
+div#rc-copilot-panel .rc-conf { margin: 0 0 14px; }
+div#rc-copilot-panel .rc-conf-top {
+  display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px;
+}
+div#rc-copilot-panel .rc-conf-label {
+  font: 650 9.5px/1 var(--rc-sans); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--rc-ink-3);
+}
+div#rc-copilot-panel .rc-conf-val { font: 650 13px/1 var(--rc-sans); text-transform: capitalize; }
+
+div#rc-copilot-panel .rc-meter {
+  height: 6px; border-radius: 99px; background: var(--rc-line); overflow: hidden;
+}
+div#rc-copilot-panel .rc-meter i {
+  display: block; height: 100%; border-radius: 99px;
+  transition: width .5s cubic-bezier(.2,.8,.3,1);
+}
+div#rc-copilot-panel .rc-high .rc-conf-val { color: var(--rc-ok); }
+div#rc-copilot-panel .rc-high .rc-meter i   { background: var(--rc-ok); }
+div#rc-copilot-panel .rc-medium .rc-conf-val { color: var(--rc-warn); }
+div#rc-copilot-panel .rc-medium .rc-meter i  { background: var(--rc-warn); }
+div#rc-copilot-panel .rc-low .rc-conf-val { color: var(--rc-bad); }
+div#rc-copilot-panel .rc-low .rc-meter i   { background: var(--rc-bad); }
+div#rc-copilot-panel .rc-unknown .rc-conf-val { color: var(--rc-ink-3); }
+div#rc-copilot-panel .rc-unknown .rc-meter i  { background: var(--rc-ink-3); }
+
+/* ---------- sections ---------- */
+
+div#rc-copilot-panel .rc-h {
+  margin: 16px 0 7px;
+  font: 650 9.5px/1 var(--rc-sans); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--rc-ink-3);
+  display: flex; align-items: center; gap: 7px;
+}
+div#rc-copilot-panel .rc-h::after {
+  content: ""; flex: 1; height: 1px; background: var(--rc-line);
+}
+
+div#rc-copilot-panel .rc-list { margin: 0; padding-left: 17px; font-size: 12.5px; color: var(--rc-ink-2); }
+div#rc-copilot-panel .rc-list li { margin-bottom: 6px; }
+div#rc-copilot-panel .rc-list li::marker { color: var(--rc-warn); }
+
+div#rc-copilot-panel .rc-summary { margin: 0; font-size: 13px; color: var(--rc-ink); }
+
+/* ---------- draft ---------- */
+
+div#rc-copilot-panel .rc-draft {
+  all: initial;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  padding: 11px 12px;
+  background: var(--rc-sunken);
+  border: 1px solid var(--rc-line-strong);
+  border-radius: 10px;
+  font: 400 12px/1.6 var(--rc-mono);
+  color: var(--rc-ink);
+  white-space: pre-wrap;
+  resize: vertical;
+  tab-size: 2;
+}
+div#rc-copilot-panel .rc-draft:focus {
+  outline: none;
+  border-color: var(--rc-accent);
+  box-shadow: 0 0 0 3px rgba(200,16,46,.12);
+  background: var(--rc-surface);
+}
+
+div#rc-copilot-panel .rc-foot {
+  display: flex; gap: 8px; padding: 11px 14px;
+  border-top: 1px solid var(--rc-line);
+  background: var(--rc-sunken);
+  flex: none;
+}
+
+div#rc-copilot-panel .rc-btn {
+  all: initial;
+  box-sizing: border-box;
+  flex: 1;
+  text-align: center;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font: 600 12.5px/1 var(--rc-sans);
+  cursor: pointer;
+  transition: background .14s ease, transform .08s ease;
+}
+div#rc-copilot-panel .rc-btn:active { transform: translateY(1px); }
+div#rc-copilot-panel .rc-btn-primary { background: var(--rc-accent); color: #fff; }
+div#rc-copilot-panel .rc-btn-primary:hover { background: var(--rc-accent-600); }
+div#rc-copilot-panel .rc-btn-ghost {
+  background: var(--rc-surface); color: var(--rc-ink);
+  border: 1px solid var(--rc-line-strong);
+}
+div#rc-copilot-panel .rc-btn-ghost:hover { background: var(--rc-line); }
+div#rc-copilot-panel .rc-btn-done { background: var(--rc-ok-bg); color: var(--rc-ok); border-color: var(--rc-ok-line); }
+
+div#rc-copilot-panel .rc-meta {
+  margin: 10px 0 0; font-size: 11px; color: var(--rc-ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button#rc-copilot-btn.rc-fab,
+  div#rc-copilot-panel.rc-panel,
+  div#rc-copilot-panel * { animation: none !important; transition: none !important; }
+}
+
+/* ---------- compose: extra instructions ---------- */
+
+div#rc-copilot-panel .rc-notes {
+  all: initial;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 84px;
+  padding: 10px 12px;
+  background: var(--rc-surface);
+  border: 1px solid var(--rc-line-strong);
+  border-radius: 10px;
+  font: 400 12.5px/1.55 var(--rc-sans);
+  color: var(--rc-ink);
+  resize: vertical;
+}
+div#rc-copilot-panel .rc-notes::placeholder { color: var(--rc-ink-3); }
+div#rc-copilot-panel .rc-notes:focus {
+  outline: none;
+  border-color: var(--rc-accent);
+  box-shadow: 0 0 0 3px rgba(200,16,46,.12);
+}
+
+/* what the RC member typed, echoed back with the result */
+div#rc-copilot-panel .rc-yours {
+  padding: 9px 11px;
+  background: var(--rc-sunken);
+  border-left: 3px solid var(--rc-accent);
+  border-radius: 0 8px 8px 0;
+  font-size: 12.5px;
+  color: var(--rc-ink-2);
+  white-space: pre-wrap;
+}

@@ -1,0 +1,45 @@
+<%-
+  # host / port / password come from connection.yml.
+  # Relative path: the browser resolves it against whichever OOD host you are on.
+  rc_path = "/rnode/#{host}/#{port}"
+-%>
+
+<!-- The browser extension reads these and configures itself. Only the owner of
+     this job can see this card - the same model OOD uses for Jupyter passwords. -->
+<div id="rc-copilot-connection"
+     data-rc-path="<%= rc_path %>"
+     data-rc-token="<%= password %>"
+     data-rc-node="<%= host %>"
+     data-rc-app="Capture Test"
+     hidden></div>
+
+<div class="mb-2">
+  <a class="btn btn-primary" href="<%= rc_path %>/api/health" target="_blank" rel="noopener">
+    Check it is alive
+  </a>
+</div>
+
+<p class="text-muted mb-1" style="font-size: 0.9em;">
+  <strong>Capture test</strong> on <code><%= host %></code> - no model is running.
+  The extension has picked this session up automatically; open a ServiceNow
+  ticket and click <em>Draft reply</em>. Whatever it scrapes is stored under
+  <code>/scratch/$USER/rc_copilot_captures</code> and echoed back into the work notes.
+</p>
+
+<details style="font-size: 0.9em;">
+  <summary class="text-muted">Connect manually</summary>
+  <p class="mt-2 mb-1">Only needed if the extension didn't configure itself.</p>
+  <dl class="mb-0">
+    <dt>Backend URL</dt>
+    <dd><code id="rc-capture-url"><%= rc_path %></code></dd>
+    <dt>Access token</dt>
+    <dd><code><%= password %></code></dd>
+  </dl>
+</details>
+
+<script>
+  (function () {
+    var el = document.getElementById("rc-capture-url");
+    if (el) el.textContent = window.location.origin + el.textContent;
+  })();
+</script>

@@ -1,0 +1,71 @@
+---
+cluster: explorer
+
+form:
+  - bc_num_hours
+  - partition
+  - gpu_layout
+  - rc_model
+
+attributes:
+  bc_num_hours:
+    widget: number_field
+    label: "Hours"
+    value: 1
+    min: 1
+    max: 8
+    step: 1
+    help: >-
+      Capped by the partition: gpu-interactive and gpu-short allow 2 hours,
+      gpu allows 8. The box tightens itself when you change partition. The
+      model takes a few minutes to load, so a 1-hour session gives roughly
+      50 minutes of drafting.
+
+  partition:
+    widget: select
+    label: "Partition"
+    value: "gpu-interactive"
+    options:
+      - [ "gpu-interactive - for OOD sessions (recommended)", "gpu-interactive",
+          data-max-bc-num-hours: 2 ]
+      - [ "gpu-short - 2 h, higher priority", "gpu-short",
+          data-max-bc-num-hours: 2 ]
+      - [ "gpu - up to 8 h, longer queue", "gpu",
+          data-max-bc-num-hours: 8 ]
+      - [ "multigpu - needs approval, required for 2+ GPUs", "multigpu",
+          data-max-bc-num-hours: 24 ]
+    help: >-
+      gpu-interactive is the partition RC documents for Open OnDemand sessions.
+      All the general-access GPU partitions allow only ONE GPU per job; 2 or
+      more requires multigpu, which needs prior approval.
+      See https://rc.northeastern.edu/partitions
+
+  gpu_layout:
+    widget: select
+    label: "GPUs"
+    value: "1x80"
+    options:
+      - ["1 x A100 80GB - 32K context (the only option without approval)", "1x80"]
+      - ["2 x A100 - 131K context, needs multigpu approval", "2x"]
+      - ["4 x A100 - GLM-4.5-Air, needs multigpu approval", "4x"]
+    help: >-
+      Measured here at TP=2: weights are 28.08 GiB per GPU, so ~56 GiB on a
+      single card. An 80GB A100 then has ~12.5 GiB left, about 124,000 KV
+      tokens - roughly 3.8x concurrency at 32K context, far more than a ticket
+      needs. One GPU is both sufficient and the only thing general-access
+      partitions permit. Picking 2x or 4x forces the multigpu partition.
+
+  rc_model:
+    widget: select
+    label: "Model"
+    value: "small"
+    options:
+      - ["Qwen2.5-3B - TEST ONLY, any free GPU, starts in ~1 min", "small"]
+      - ["GLM-4.7-Flash (30B MoE) - one A100 80GB, the real one", "flash"]
+      - ["GLM-4.5-Air (106B) - needs 4 GPUs and multigpu approval", "air"]
+    help: >-
+      Start with Qwen2.5-3B. It is only ~6 GB, so it schedules on any free GPU
+      in seconds instead of queueing for an A100, and it is enough to prove the
+      whole path works and to iterate on the prompt. Draft quality will be
+      clearly worse than GLM - switch to GLM-4.7-Flash once the pipeline is
+      confirmed.

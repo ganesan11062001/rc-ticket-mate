@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>RC Copilot</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <header class="hdr">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>RC Copilot</h1>
+        <p class="sub">ServiceNow drafting</p>
+      </div>
+    </div>
+    <span class="ver" id="version">v0.5.0</span>
+  </header>
+
+  <!-- connection card: the one thing you look at when you open this -->
+  <section class="conn" id="conn" data-state="loading">
+    <div class="conn-main">
+      <span class="pulse" aria-hidden="true"><i></i></span>
+      <div class="conn-text">
+        <strong id="conn-title">Checking…</strong>
+        <span id="conn-sub">reading saved session</span>
+      </div>
+    </div>
+    <dl class="facts" id="facts" hidden>
+      <div><dt>Node</dt><dd id="fact-node">—</dd></div>
+      <div><dt>Model</dt><dd id="fact-model">—</dd></div>
+      <div><dt>Session</dt><dd id="fact-session">—</dd></div>
+    </dl>
+  </section>
+
+  <section class="setup" id="unconfigured" hidden>
+    <ol class="steps">
+      <li>Launch <b>RC Copilot</b> in Open OnDemand</li>
+      <li>Open <a href="https://ood.explorer.northeastern.edu/pun/sys/dashboard/batch_connect/sessions" target="_blank" rel="noreferrer">My Interactive Sessions</a></li>
+      <li>Come back here — it configures itself</li>
+    </ol>
+  </section>
+
+  <section class="field">
+    <label for="target-field">Write the draft into</label>
+    <div class="select-wrap">
+      <select id="target-field">
+        <option value="work_notes">Work notes — internal</option>
+        <option value="comments">Additional comments — customer visible</option>
+      </select>
+    </div>
+    <p class="note" id="target-warning"></p>
+  </section>
+
+  <div class="actions">
+    <button id="test" class="btn primary" type="button">
+      <span class="btn-label">Test connection</span>
+    </button>
+  </div>
+
+  <p id="status" class="toast" hidden></p>
+
+  <details id="manual" class="drawer">
+    <summary>Connection details</summary>
+    <div class="drawer-body">
+      <p class="note">Filled in automatically. Only edit if that didn't work.</p>
+
+      <label for="ood-url">Backend URL</label>
+      <input id="ood-url" type="url" spellcheck="false" autocomplete="off"
+             placeholder="https://ood.explorer.northeastern.edu/rnode/…" />
+
+      <label for="access-token">Access token</label>
+      <input id="access-token" type="password" spellcheck="false" autocomplete="off"
+             placeholder="from the OOD session card" />
+
+      <button id="save" class="btn ghost" type="button">Save manually</button>
+    </div>
+  </details>
+
+  <details class="drawer">
+    <summary>Not working?</summary>
+    <div class="drawer-body">
+      <ul class="tips">
+        <li><b>HTML login page</b> — sign in to OOD in a tab</li>
+        <li><b>404</b> — the session ended; launch it again</li>
+        <li><b>502 / 503</b> — job alive, app not listening</li>
+        <li><b>Token rejected</b> — new session, reopen My Interactive Sessions</li>
+        <li><b>Off campus</b> — you need the VPN</li>
+      </ul>
+    </div>
+  </details>
+
+  <script src="popup.js"></script>
+</body>
+</html>

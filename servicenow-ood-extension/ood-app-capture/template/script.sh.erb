@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Capture-only backend on a GPU node. No model, no CUDA - the GPU is requested
+# so the OOD proxy path is exercised against real GPU hardware.
+#
+# Must stay in the foreground: OOD treats this script exiting as the session
+# ending.
+
+set -uo pipefail
+
+TM_ROOT="${TM_ROOT:-/projects/rc/projects/ticket_mate}"
+APP_DIR="$TM_ROOT/servicenow-ood-extension/cluster"
+PYTHON="$TM_ROOT/rc-copilot/.venv/bin/python"
+
+export CAPTURE_DIR="${CAPTURE_DIR:-/scratch/$USER/rc_copilot_captures}"
+export AUTH_TOKEN="$password"                      # from before.sh, OOD-generated
+export SESSION_HOURS="<%= context.bc_num_hours %>" # match sign-in to the job
+export LOG_FILE=""                                 # stdout only
+
+echo "=== RC Copilot capture test ==="
+echo "node        : $(hostname)"
+echo "slurm job   : ${SLURM_JOB_ID:-n/a}"
+echo "captures to : $CAPTURE_DIR"
+
+# Proves we really are on a GPU node, which is the point of asking for one.
+if command -v nvidia-smi >/dev/null 2>&1; then
+  nvidia-smi --query-gpu=index,name,memory.total,compute_cap --format=csv || true
+else
+  echo "WARNING: no nvidia-smi - this does not look like a GPU node."
+fi
+
+[ -x "$PYTHON" ] || { echo "ERROR: no venv at $PYTHON"; exit 1; }
+[ -f "$APP_DIR/capture_server.py" ] || { echo "ERROR: capture_server.py not found in $APP_DIR"; exit 1; }
+
+cd "$APP_DIR" || exit 1
+
+echo "=== serving on 0.0.0.0:${port} ==="
+exec "$PYTHON" -m uvicorn capture_server:app --host 0.0.0.0 --port "${port}"

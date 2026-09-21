@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RC Copilot</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div>
+        <h1>RC Copilot</h1>
+        <p class="tagline">Draft a reply to a Research Computing ticket. Review before sending — nothing is sent anywhere automatically.</p>
+      </div>
+      <div class="header-right">
+        <div class="health" id="health" title="Status of the vLLM model server">
+          <span class="dot" id="health-dot"></span>
+          <span id="health-text">checking model server…</span>
+        </div>
+        <div class="session" id="session" hidden>
+          <span id="session-text"></span>
+          <button id="signout-btn" class="link" type="button">Sign out</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap" id="login-main" hidden>
+    <section id="login" class="card login">
+      <h2>Sign in</h2>
+      <p class="hint">
+        This backend is reachable by other users on the cluster, so drafting is
+        locked behind the access token printed in the terminal where you started
+        <code>uvicorn</code>.
+      </p>
+      <label class="field-label" for="access-token">Access token</label>
+      <input id="access-token" type="password" autocomplete="off" spellcheck="false"
+             placeholder="paste the token from the server console" />
+      <div class="actions">
+        <button id="login-btn" class="primary" type="button">Sign in</button>
+        <span class="hint" id="login-hint"></span>
+      </div>
+      <p id="login-error" class="status error" hidden></p>
+    </section>
+  </main>
+
+  <main class="wrap" id="app-main" hidden>
+    <section class="card">
+      <label class="field-label" for="ticket-text">Paste ticket details</label>
+      <p class="hint">Short description, description, work notes — whatever you copied out of ServiceNow. Avoid pasting anything you wouldn't want processed by the model.</p>
+      <textarea
+        id="ticket-text"
+        rows="14"
+        placeholder="e.g.&#10;Short description: Job killed on Discovery&#10;&#10;Description: My job 41823991 keeps dying after about 10 minutes. I'm running a Python script on the short partition and I see &quot;slurmstepd: error: Detected 1 oom-kill event&quot; in the log. It worked fine on a smaller dataset last week.&#10;&#10;Work notes: ..."
+        spellcheck="false"
+      ></textarea>
+
+      <div class="actions">
+        <button id="draft-btn" class="primary">Draft Response</button>
+        <button id="clear-btn" class="secondary" type="button">Clear</button>
+        <span class="char-count" id="char-count">0 characters</span>
+      </div>
+    </section>
+
+    <section id="status" class="status" hidden></section>
+
+    <section id="results" class="results" hidden>
+      <div class="card">
+        <div class="result-head">
+          <h2>Problem summary</h2>
+          <span class="badge" id="confidence-badge"></span>
+        </div>
+        <p id="problem-summary"></p>
+        <p class="meta" id="result-meta"></p>
+      </div>
+
+      <div class="card">
+        <h2>Suggested steps</h2>
+        <ol id="suggested-steps"></ol>
+      </div>
+
+      <div class="card" id="caveats-card">
+        <h2>Check before sending</h2>
+        <ul id="caveats"></ul>
+      </div>
+
+      <div class="card">
+        <div class="result-head">
+          <h2>Draft response</h2>
+          <button id="copy-btn" class="secondary" type="button">Copy to clipboard</button>
+        </div>
+        <textarea id="draft-response" rows="16" spellcheck="true"></textarea>
+        <p class="hint">Editable — tweak it here, then copy it into ServiceNow.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

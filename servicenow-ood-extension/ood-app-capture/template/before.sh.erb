@@ -1,0 +1,11 @@
+# Whatever is exported here is what OOD writes into connection.yml, and that is
+# what the extension reads back off the session card.
+
+[[ $(type -t module) == "function" ]] && export -f module
+
+# find_port and create_passwd come from OOD's batch_connect framework.
+export port=$(find_port)
+
+# Becomes AUTH_TOKEN for the capture server. OOD shows it only on the session
+# card of the user who owns the job, so it never touches /projects.
+export password="$(create_passwd)"

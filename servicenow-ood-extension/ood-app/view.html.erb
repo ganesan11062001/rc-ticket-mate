@@ -1,0 +1,54 @@
+<%-
+  # host, port and password come from connection.yml, which OOD wrote from the
+  # variables exported in before.sh.erb.
+  #
+  # The path is deliberately relative: the browser resolves it against whatever
+  # OOD host you are actually on, so nothing here hard-codes a hostname.
+  rc_path = "/rnode/#{host}/#{port}"
+-%>
+
+<!-- The browser extension reads these two attributes and configures itself.
+     Only the owner of this job can see this card, which is exactly OOD's own
+     security model for Jupyter/RStudio passwords. -->
+<div id="rc-copilot-connection"
+     data-rc-path="<%= rc_path %>"
+     data-rc-token="<%= password %>"
+     data-rc-node="<%= host %>"
+     data-rc-app="RC Copilot"
+     hidden></div>
+
+<div class="mb-2">
+  <a class="btn btn-primary"
+     href="<%= rc_path %>/"
+     target="_blank"
+     rel="noopener">
+    Open RC Copilot
+  </a>
+</div>
+
+<p class="text-muted mb-1" style="font-size: 0.9em;">
+  Running on <code><%= host %></code>.
+  The ServiceNow extension picks this session up automatically — if you have it
+  installed, there is nothing to copy.
+</p>
+
+<details style="font-size: 0.9em;">
+  <summary class="text-muted">Connect manually</summary>
+  <p class="mt-2 mb-1">Only needed if the extension didn't configure itself.</p>
+  <dl class="mb-0">
+    <dt>Backend URL</dt>
+    <dd><code id="rc-copilot-url"><%= rc_path %></code>
+        <span class="text-muted">(prefixed with this site's address)</span></dd>
+    <dt>Access token</dt>
+    <dd><code><%= password %></code></dd>
+  </dl>
+</details>
+
+<script>
+  // Show the absolute URL, since the extension and a human both want the full
+  // thing but the markup above must stay host-agnostic.
+  (function () {
+    var el = document.getElementById("rc-copilot-url");
+    if (el) el.textContent = window.location.origin + el.textContent;
+  })();
+</script>

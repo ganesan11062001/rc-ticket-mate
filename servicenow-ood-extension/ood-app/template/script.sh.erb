@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Starts vLLM (loopback) and rc-copilot (all interfaces, so the OOD node proxy
+# can reach it) inside the allocation. Must stay in the foreground: OOD treats
+# this script exiting as the session ending.
+
+set -uo pipefail
+
+TM_ROOT="${TM_ROOT:-/projects/rc/projects/ticket_mate}"
+# Files under template/ are rendered with a TemplateBinding, which exposes
+# `context` and `session` but NOT the form attributes as bare locals. Bare
+# `model` raises "undefined local variable" at staging time; only submit.yml.erb
+# gets the attributes directly.
+MODEL="<%= context.rc_model %>"
+GPU_LAYOUT="<%= context.gpu_layout %>"
+
+# Tensor parallelism and context length have to match what submit.yml.erb
+# actually requested, or vLLM will either fail to start or silently reserve a
+# KV cache it has no room for.
+#
+# Measured on this cluster at TP=2: weights 28.08 GiB/GPU, KV cache 41.21
+# GiB/GPU giving 817,248 tokens. On one 80GB card the weights take ~56 GiB,
+# leaving ~12.5 GiB -> roughly 124,000 KV tokens, which is still ~3.8x
+# concurrency at a 32K context. A ticket plus prompt is a few thousand tokens.
+case "$GPU_LAYOUT" in
+  1x80) TP=1; MAX_LEN=32768  ;;
+  4x)   TP=4; MAX_LEN=131072 ;;
+  *)    TP=2; MAX_LEN=131072 ;;
+esac
+
+# The model choice overrides the layout: the 3B test model is single-GPU
+# whatever was selected, and Air only ever runs on four.
+case "$MODEL" in
+  small) TP=1; MAX_LEN=16384  ;;
+  air)   TP=4; MAX_LEN=131072 ;;
+esac
+
+export TP MAX_LEN
+echo "=== layout=${GPU_LAYOUT} -> TP=${TP}, max_model_len=${MAX_LEN} ==="
+
+echo "=== RC Copilot on $(hostname) (job ${SLURM_JOB_ID:-?}) ==="
+nvidia-smi --query-gpu=index,name,memory.total,driver_version --format=csv
+
+source "$TM_ROOT/env.sh"
+
+VLLM_PID=""
+cleanup() {
+  echo "shutting down..."
+  [ -n "$VLLM_PID" ] && kill "$VLLM_PID" 2>/dev/null
+  wait 2>/dev/null
+}
+trap cleanup EXIT INT TERM
+
+# ── vLLM, loopback only ───────────────────────────────────────────────────────
+echo "=== starting vLLM on 127.0.0.1:${VLLM_PORT} (model=${MODEL}) ==="
+MODEL="$MODEL" PORT="$VLLM_PORT" VLLM_HOST=127.0.0.1 TP="$TP" MAX_LEN="$MAX_LEN" \
+  "$TM_ROOT/serve_glm.sh" > "vllm.log" 2>&1 &
+VLLM_PID=$!
+
+echo -n "waiting for weights to load"
+READY=0
+for _ in $(seq 1 120); do   # up to ~20 min
+  if ! kill -0 "$VLLM_PID" 2>/dev/null; then
+    echo; echo "ERROR: vLLM exited early. Tail of vllm.log:"; tail -40 vllm.log
+    exit 1
+  fi
+  if curl -sf --noproxy '*' --max-time 3 \
+       "http://127.0.0.1:${VLLM_PORT}/v1/models" -o /dev/null; then
+    READY=1; echo " ready"; break
+  fi
+  echo -n "."
+  sleep 10
+done
+[ "$READY" = 1 ] || { echo; echo "ERROR: vLLM never became ready. See vllm.log"; exit 1; }
+
+SERVED_MODEL="$(curl -sf --noproxy '*' "http://127.0.0.1:${VLLM_PORT}/v1/models" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
+echo "=== vLLM serving ${SERVED_MODEL} ==="
+
+# ── rc-copilot ────────────────────────────────────────────────────────────────
+cd "$TM_ROOT/rc-copilot" || exit 1
+
+export VLLM_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
+export VLLM_MODEL_NAME="$SERVED_MODEL"
+export AUTH_TOKEN="$password"     # from before.sh; OOD generated it
+# Match the sign-in lifetime to the allocation, so the UI never claims more
+# time than the job actually has left.
+export SESSION_HOURS="<%= context.bc_num_hours %>"
+export LOG_FILE=""                # stdout only — nothing extra on /projects
+export USE_PROXY_ENV=false
+
+echo "=== starting rc-copilot on 0.0.0.0:${port} ==="
+exec "$TM_ROOT/rc-copilot/.venv/bin/python" -m uvicorn backend.main:app \
+  --host 0.0.0.0 --port "${port}"

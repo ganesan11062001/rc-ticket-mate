@@ -1,0 +1,26 @@
+---
+<%-
+  hours = bc_num_hours.to_i
+  part  = partition.to_s
+  kind  = gpu_kind.to_s
+
+  # Untyped "gpu:1" matches whatever GRES the node advertises, so it schedules
+  # on a T4, V100 or A100 - whichever frees up first.
+  gres = (kind == "any") ? "gpu:1" : "gpu:#{kind}:1"
+
+  # Backstop for the browser-side data-max-bc-num-hours.
+  max_hours = { "gpu-interactive" => 2, "gpu-short" => 2, "gpu" => 8 }.fetch(part, 2)
+  hours = max_hours if hours > max_hours
+  hours = 1 if hours < 1
+-%>
+batch_connect:
+  template: "basic"
+
+script:
+  native:
+    - "--partition=<%= part %>"
+    - "--gres=<%= gres %>"
+    - "--cpus-per-task=2"
+    - "--mem=8G"
+    - "--time=<%= hours %>:00:00"
+    - "--job-name=rc-capture"

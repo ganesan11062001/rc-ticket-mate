@@ -1,0 +1,50 @@
+---
+cluster: explorer
+
+form:
+  - bc_num_hours
+  - partition
+  - gpu_kind
+
+attributes:
+  bc_num_hours:
+    widget: number_field
+    label: "Hours"
+    value: 1
+    min: 1
+    max: 8
+    step: 1
+    help: >-
+      gpu-interactive and gpu-short allow 2 hours, gpu allows 8. The box
+      tightens itself when you change partition.
+
+  partition:
+    widget: select
+    label: "Partition"
+    value: "gpu-interactive"
+    options:
+      - [ "gpu-interactive - for OOD sessions (recommended)", "gpu-interactive",
+          data-max-bc-num-hours: 2 ]
+      - [ "gpu-short - 2 h, higher priority", "gpu-short",
+          data-max-bc-num-hours: 2 ]
+      - [ "gpu - up to 8 h", "gpu",
+          data-max-bc-num-hours: 8 ]
+    help: >-
+      All general-access GPU partitions allow one GPU per job, which is all
+      this needs. See https://rc.northeastern.edu/partitions
+
+  gpu_kind:
+    widget: select
+    label: "GPU"
+    value: "any"
+    options:
+      - ["Any free GPU - schedules fastest (recommended)", "any"]
+      - ["T4 (16 GB) - often completely idle", "t4"]
+      - ["V100 PCIe", "v100-pcie"]
+      - ["V100 SXM2", "v100-sxm2"]
+      - ["A100 - same hardware the model will use", "a100"]
+    help: >-
+      Nothing here uses the GPU; it is requested so the proxy path is tested
+      against a real GPU node. "Any" is the fastest to schedule. Pick A100 only
+      if you specifically want to prove the path on the node type the model
+      will run on - it queues longer.

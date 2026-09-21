@@ -1,0 +1,16 @@
+---
+name: RC Copilot - Capture Test
+icon: fa://vial
+category: Standard Apps
+subcategory: RC Tools
+role: batch_connect
+description: |
+  Data-path test for RC Copilot. Runs no model: it receives whatever the browser
+  extension scrapes from a ServiceNow ticket, stores it on the cluster, and
+  echoes it straight back so you can see exactly what was captured.
+
+  Takes one GPU so the request path is tested against a real GPU node - the same
+  kind the model will eventually run on.
+
+  Launch this, open "My Interactive Sessions", and the extension configures
+  itself. Then open a ticket and click "Draft reply".

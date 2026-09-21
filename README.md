@@ -1,0 +1,108 @@
+# ticket_mate — vLLM setup on Explorer
+
+vLLM 0.29.0 serving GLM models on a single A100 node.
+
+## Quick start
+
+Edit the `--partition` / `--gres` lines in `sbatch_serve.sh` to match your
+allocation first (see the comment block in that file), then:
+
+```bash
+sbatch sbatch_serve.sh          # GLM-4.7-Flash on 2 A100s
+MODEL=air sbatch sbatch_serve.sh  # GLM-4.5-Air on 4 A100s
+```
+
+Or interactively on a GPU node:
+
+```bash
+source env.sh
+./serve_glm.sh            # GLM-4.7-Flash
+MODEL=air ./serve_glm.sh  # GLM-4.5-Air
+```
+
+Check it works:
+
+```bash
+source env.sh
+python smoke_test.py
+```
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `env.sh` | Sourceable env — venv, caches, CUDA paths. Everything else assumes this ran. |
+| `serve_glm.sh` | Starts `vllm serve` with the right flags per model. |
+| `sbatch_serve.sh` | Slurm wrapper around `serve_glm.sh`. |
+| `smoke_test.py` | Hits `/v1/models` and `/v1/chat/completions` against a running server. |
+
+## Why not GLM-5.3
+
+GLM-5.3 was the original goal. It does not fit on one A100 node, and the
+blocker is not just capacity — it is the GPU generation.
+
+GLM-5.3 is a 743B-parameter MoE (39B active) with DeepSeek-style sparse
+attention (`GlmMoeDsaForCausalLM`) and a 1M-token context. Per the
+[official vLLM recipe](https://recipes.vllm.ai/zai-org/GLM-5.3):
+
+| Variant | Weights | VRAM floor | Hardware requirement |
+|---|---|---|---|
+| `zai-org/GLM-5.3` (native FP8) | 756 GB | 893 GB | 8×H200 / H20 |
+| `gpustack/GLM-5.3-W4A8` | 372 GB | 447 GB | **H100/H200 only** — CUTLASS W4A8 is sm90-only |
+| `Inferact/GLM-5.3-NVFP4` | ~465 GB | 558 GB | **Blackwell only** (B200/B300) |
+| `zai-org/GLM-5.3-Flash` (FP8) | 328 GB | 386 GB | 8×H100+, nightly docker image only |
+| `RedHatAI/GLM-5.3-Flash-NVFP4` | — | 229 GB | **Blackwell only** |
+| `zai-org/GLM-5.3-BF16` | 1.5 TB | 1786 GB | multi-node |
+
+One A100 node tops out at 8 × 80 GB = **640 GB**, so on capacity alone only the
+two smallest variants are even in range — and both of those are gated on
+hardware the A100 does not have:
+
+- A100 is **sm80**. It has no native FP8 tensor cores (those arrive with sm89/sm90),
+  so every FP8 checkpoint above is off the table.
+- The W4A8 kernel that makes the 447 GB variant possible is explicitly sm90-only.
+- NVFP4 requires Blackwell (sm100).
+
+Running GLM-5.3 would need at minimum **8×H200** for the native FP8 checkpoint,
+or 8×H100 for the W4A8 variant.
+
+## What fits instead
+
+Both are BF16, so they need no FP8 hardware and run natively on sm80:
+
+| Model | Params | Weights | GPUs (A100-80GB) | Context |
+|---|---|---|---|---|
+| `zai-org/GLM-4.7-Flash` | ~30B MoE (64 experts, 4 active) | 62.5 GB | 2 | 198K |
+| `zai-org/GLM-4.5-Air` | 106B total / 12B active | 221 GB | 4 | 131K |
+
+GLM-4.7-Flash is the default: newest GLM generation that fits comfortably, same
+`glm47` tool-call parser and `glm45` reasoning parser as GLM-5.3, so client code
+written against it ports to GLM-5.3 unchanged if you later get Hopper access.
+
+## Environment notes
+
+- Everything (venv, uv, HF cache, Triton cache) lives under `/projects/rc/projects/ticket_mate`
+  to stay off the home quota. `env.sh` sets `HF_HOME` accordingly.
+- torch is pinned to the **cu129** build. vLLM 0.29.0 requires torch 2.13.0,
+  which is published only on the cu129 and cu130 indexes. cu129 is the safer
+  pick for an older A100 driver.
+- Do not install with `--torch-backend=auto` from a login/VNC node: with no GPU
+  present it silently resolves to `torch==2.13.0+cpu`, which cannot serve.
+  Always pass `--torch-backend=cu129` explicitly.
+- The module system is broken on the node this was set up from
+  (`modulecmd.tcl` missing), which is why the install uses a self-contained
+  `uv` + standalone CPython 3.12 rather than `module load anaconda3`.
+
+## Verifying on a GPU node
+
+The install was done on a CPU-only node, so the CUDA path is unverified. On the
+A100 node run:
+
+```bash
+source env.sh
+nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.device_count())"
+```
+
+Expect `2.13.0+cu129` and a nonzero device count. Set `TP` in `serve_glm.sh` to
+match the GPU count.

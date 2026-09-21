@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "RC Copilot for ServiceNow",
+  "version": "0.5.0",
+  "description": "Drafts a reply to the open ServiceNow ticket using a private LLM in your own Slurm job, reached through Open OnDemand.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.northeastern.edu/*",
+    "https://northeastern.edu/*",
+    "https://*.neu.edu/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "RC Copilot",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://service.northeastern.edu/*",
+        "*://*.service-now.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://ood.explorer.northeastern.edu/*"
+      ],
+      "js": [
+        "ood-connect.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}
