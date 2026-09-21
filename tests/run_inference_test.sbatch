@@ -15,7 +15,9 @@
 #   sbatch run_inference_test.sbatch
 #   tail -f logs/inftest-<jobid>.out
 #
-# Defaults to the 3B test model on ANY free GPU, so it schedules in seconds.
+# Defaults to the 3B test model on ANY free GPU, so it schedules in seconds
+# (note: its weights are not cached yet, so the first run downloads ~6 GB).
+# GLM-4.7-Flash is already fully cached, so MODEL=flash downloads nothing.
 # For the real model (one A100 80GB; general-access partitions cap at 1 GPU):
 #
 #   sbatch --gres=gpu:a100:1 --constraint=a100@80g --mem=120G \
@@ -54,13 +56,69 @@ fi
 
 source "$TM_ROOT/cluster/env.sh"
 
+# --- derive TP and context from the GPUs we were actually given -------------
+# serve_glm.sh defaults MODEL=flash to TP=2. If Slurm gave us one GPU that
+# mismatch only surfaces after the queue wait, so settle it here instead.
+GPU_COUNT="$(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)"
+GPU_MIB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)"
+TOTAL_MIB=$(( GPU_COUNT * GPU_MIB ))
+
+echo
+echo "=== allocation: ${GPU_COUNT} GPU(s), ${GPU_MIB} MiB each (${TOTAL_MIB} MiB total) ==="
+
+export TP="${TP:-$GPU_COUNT}"
+
+if [ "$MODEL" = "flash" ] || [ "$MODEL" = "air" ]; then
+  # GLM-4.7-Flash is ~56 GiB of weights; Air is far larger. Refuse now rather
+  # than spend ten minutes loading into a card that cannot hold it.
+  NEED_MIB=72000
+  [ "$MODEL" = "air" ] && NEED_MIB=245000
+  if [ "$TOTAL_MIB" -lt "$NEED_MIB" ]; then
+    echo
+    echo "ERROR: MODEL=$MODEL needs about ${NEED_MIB} MiB of VRAM in total,"
+    echo "       but this allocation has ${TOTAL_MIB} MiB."
+    echo
+    if [ "$MODEL" = "flash" ]; then
+      echo "       GLM-4.7-Flash weights alone are ~56 GiB, so a 40 GB A100"
+      echo "       cannot hold them. Request an 80 GB card:"
+      echo
+      echo "         sbatch --gres=gpu:a100:1 --constraint=a100@80g --mem=120G \\"
+      echo "                --cpus-per-task=16 --export=ALL,MODEL=flash \\"
+      echo "                run_inference_test.sbatch"
+    else
+      echo "       GLM-4.5-Air is ~221 GiB in bf16 and needs 4 x A100 80GB."
+      echo "       Every general-access GPU partition caps GRES at one GPU per"
+      echo "       job, so this needs the multigpu partition, which requires"
+      echo "       prior approval:"
+      echo
+      echo "         sbatch --partition=multigpu --gres=gpu:a100:4 --mem=380G \\"
+      echo "                --cpus-per-task=16 --export=ALL,MODEL=air \\"
+      echo "                run_inference_test.sbatch"
+    fi
+    echo
+    echo "       Or use the small model, which runs anywhere:"
+    echo "         sbatch run_inference_test.sbatch"
+    exit 1
+  fi
+  # Measured at TP=2 on 80 GB cards: 28.08 GiB of weights per GPU and 41.21
+  # GiB of KV cache per GPU. At TP=1 the weights take ~56 GiB, leaving ~12.5
+  # GiB -- about 124k KV tokens, so 32k of context is comfortable. A ticket
+  # plus the prompt is a few thousand tokens.
+  if [ "$TP" = "1" ]; then
+    export MAX_LEN="${MAX_LEN:-32768}"
+  fi
+fi
+
+echo "=== TP=${TP}${MAX_LEN:+, max_model_len=$MAX_LEN} ==="
+
 # --- vLLM on a free loopback port ------------------------------------------
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 LOG="logs/vllm-${SLURM_JOB_ID:-local}.log"
 
 echo
 echo "=== starting vLLM on 127.0.0.1:${PORT} (log: $LOG) ==="
-MODEL="$MODEL" PORT="$PORT" VLLM_HOST=127.0.0.1 \
+MODEL="$MODEL" PORT="$PORT" VLLM_HOST=127.0.0.1 TP="$TP" \
+  ${MAX_LEN:+MAX_LEN="$MAX_LEN"} \
   "$TM_ROOT/cluster/serve_glm.sh" > "$LOG" 2>&1 &
 VLLM_PID=$!
 

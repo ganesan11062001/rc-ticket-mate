@@ -32,15 +32,28 @@ The last line is either:
  RESULT: FAIL -- see the failures above; vLLM log is logs/vllm-<jobid>.log
 ```
 
-### Against the real model
+### Against GLM-4.7-Flash (the real model)
 
-General-access GPU partitions cap at one GPU per job, and GLM-4.7-Flash needs
-an 80 GB card:
+Already fully cached locally, so this downloads nothing — unlike the 3B
+default, whose weights are not cached yet.
+
+General-access GPU partitions cap at one GPU per job, and the weights are
+~56 GiB, so it needs an **80 GB** A100:
 
 ```bash
 sbatch --gres=gpu:a100:1 --constraint=a100@80g --mem=120G \
        --cpus-per-task=16 --export=ALL,MODEL=flash run_inference_test.sbatch
 ```
+
+The job derives tensor parallelism from the GPUs Slurm actually gave it, and
+refuses in seconds — before loading anything — if they cannot hold the model.
+`serve_glm.sh` defaults `flash` to TP=2, so without that check a one-GPU
+allocation would fail only *after* the queue wait.
+
+At TP=1 the context is capped at 32k, which is ample: measured at TP=2 on 80 GB
+cards, weights take 28.08 GiB per GPU and KV cache 41.21 GiB per GPU, so on one
+card the weights take ~56 GiB and leave ~12.5 GiB — roughly 124k KV tokens. A
+ticket plus the prompt is a few thousand.
 
 ### On a real ticket
 
@@ -105,6 +118,11 @@ four modes, so a PASS means something:
 - **model returns prose, not JSON** → schema validation FAILs on both paths and
   the raw output is printed for inspection
 - **response truncated** → `finish_reason=length` FAILs and names `--max-tokens`
+
+The GPU guard was checked against seven simulated allocations (1x40 GB, 1x80 GB,
+2x40 GB, 2x80 GB, 8xH200, and `air` on one card): tensor parallelism always
+matches the allocation, and the two impossible combinations exit 1 with advice
+specific to the model requested.
 
 Not yet run against a real GPU or a real model — that is what you are about to
 do.
