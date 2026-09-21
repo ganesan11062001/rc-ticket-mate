@@ -1,108 +1,169 @@
-# ticket_mate — vLLM setup on Explorer
+# RC Copilot
 
-vLLM 0.29.0 serving GLM models on a single A100 node.
+**Draft replies to ServiceNow tickets using a private LLM running inside your
+own HPC allocation.** Built for the Research Computing team at Northeastern.
+
+One click on a ticket reads it, sends it to a model running in your Slurm job,
+and writes a draft into the work notes for you to review. No ticket data leaves
+the university, and no ServiceNow API access is needed.
+
+> **Status:** working prototype. The data path is proven end to end with real
+> tickets. The model has not yet generated a draft — see
+> [Status](#status) before assuming it is finished.
+
+---
+
+## The problem
+
+RC staff answer a lot of tickets that rhyme: out-of-memory kills, quota limits,
+module and environment mistakes, access requests. Writing each reply from
+scratch is repetitive.
+
+Two constraints shaped the whole design:
+
+- **No ServiceNow API access.** Org policy doesn't grant it, so anything that
+  reads a ticket has to work from what's already on screen.
+- **Ticket text can't leave Northeastern.** It contains researcher names and
+  unpublished work, which rules out any hosted LLM API.
+
+Together they force an unusual shape: the **browser** is the integration point,
+and the **model runs in the user's own Slurm allocation**.
+
+---
+
+## How it works
+
+```
+ServiceNow tab            Chrome extension              Explorer HPC
+┌──────────────┐         ┌────────────────┐         ┌──────────────────┐
+│ ticket form  │  reads  │  content.js    │         │  Open OnDemand   │
+│              ├────────►│                │  https  │  (SSO + proxy)   │
+│ short desc   │         │  background.js ├────────►│        │         │
+│ description  │         │   session      │         │        ▼         │
+│              │         └────────────────┘         │  ┌────────────┐  │
+│ work notes   │◄────────────────┘                  │  │ rc-copilot │  │
+│   ▲ draft    │      structured JSON               │  │     ▼      │  │
+└──────────────┘                                    │  │ vLLM + GLM │  │
+                                                    │  └────────────┘  │
+                                                    └──────────────────┘
+```
+
+1. You open a ticket and click **Draft reply**.
+2. The extension reads the ticket and offers a box for anything the model should
+   know that the ticket doesn't say.
+3. It goes through Open OnDemand's authenticated proxy to a FastAPI service in
+   your Slurm job, which prompts a GLM model served by vLLM.
+4. You get back a summary, suggested steps, a confidence score, caveats, and a
+   ready-to-edit draft — written into **work notes**, unsaved.
+
+**Nothing is ever submitted automatically.** A human reviews and clicks Update.
+
+---
 
 ## Quick start
 
-Edit the `--partition` / `--gres` lines in `sbatch_serve.sh` to match your
-allocation first (see the comment block in that file), then:
+**1 — Launch the backend.** In Open OnDemand: *Develop → My Sandbox Apps →
+RC Copilot → Launch*. It defaults to a small 3B model on any free GPU, which
+schedules in seconds; switch to GLM-4.7-Flash once you're happy it works.
+
+**2 — Install the extension.** Download
+[`rc-copilot-servicenow-extension.zip`](rc-copilot-servicenow-extension.zip),
+unzip it, then `chrome://extensions` → Developer mode → **Load unpacked** →
+select the folder.
+
+**3 — Open OOD's "My Interactive Sessions".** The extension picks up the
+address and token on its own; there's nothing to copy.
+
+**4 — Open a ticket** and click **Draft reply**.
+
+### Without the browser at all
+
+The fastest loop for tuning the prompt needs neither the extension nor OOD:
 
 ```bash
-sbatch sbatch_serve.sh          # GLM-4.7-Flash on 2 A100s
-MODEL=air sbatch sbatch_serve.sh  # GLM-4.5-Air on 4 A100s
+cd rc-copilot
+pip install -r requirements.txt
+uvicorn backend.main:app --port 8080
 ```
 
-Or interactively on a GPU node:
+Paste tickets at `http://127.0.0.1:8080` and edit
+[`backend/prompts.py`](rc-copilot/backend/prompts.py).
 
-```bash
-source env.sh
-./serve_glm.sh            # GLM-4.7-Flash
-MODEL=air ./serve_glm.sh  # GLM-4.5-Air
-```
+---
 
-Check it works:
+## Layout
 
-```bash
-source env.sh
-python smoke_test.py
-```
+| Path | What it is |
+| --- | --- |
+| [`rc-copilot/`](rc-copilot) | FastAPI backend — prompt, vLLM client, auth. Knows nothing about ServiceNow |
+| [`servicenow-ood-extension/extension/`](servicenow-ood-extension/extension) | Chrome MV3 extension |
+| [`servicenow-ood-extension/ood-app/`](servicenow-ood-extension/ood-app) | OOD interactive app: vLLM + backend in one job |
+| [`servicenow-ood-extension/ood-app-capture/`](servicenow-ood-extension/ood-app-capture) | Same, no model — stores what's sent, for testing the data path |
+| [`servicenow-ood-extension/cluster/`](servicenow-ood-extension/cluster) | sbatch launchers, capture server |
 
-## Files
+Helper scripts: `install_vllm.sh --check`, `check_gpus.sh`, `vllm_status.sh`,
+`smoke_test.py`.
 
-| File | Purpose |
-|---|---|
-| `env.sh` | Sourceable env — venv, caches, CUDA paths. Everything else assumes this ran. |
-| `serve_glm.sh` | Starts `vllm serve` with the right flags per model. |
-| `sbatch_serve.sh` | Slurm wrapper around `serve_glm.sh`. |
-| `smoke_test.py` | Hits `/v1/models` and `/v1/chat/completions` against a running server. |
+---
 
-## Why not GLM-5.3
+## A few things worth knowing
 
-GLM-5.3 was the original goal. It does not fit on one A100 node, and the
-blocker is not just capacity — it is the GPU generation.
+**The structured output is validated, not trusted.** The model returns JSON;
+three strategies are tried (constrained decoding → JSON mode → prompt-only) and
+whatever comes back is parsed tolerantly and checked against a schema. The
+high/medium/low confidence thresholds are applied *server-side* — the model
+supplies a number, we decide what it means.
 
-GLM-5.3 is a 743B-parameter MoE (39B active) with DeepSeek-style sparse
-attention (`GlmMoeDsaForCausalLM`) and a 1M-token context. Per the
-[official vLLM recipe](https://recipes.vllm.ai/zai-org/GLM-5.3):
+**The extension can't fetch from the page.** An MV3 content script runs in the
+page's origin and is subject to CORS, so all network I/O goes through the
+service worker, where `host_permissions` applies instead.
 
-| Variant | Weights | VRAM floor | Hardware requirement |
-|---|---|---|---|
-| `zai-org/GLM-5.3` (native FP8) | 756 GB | 893 GB | 8×H200 / H20 |
-| `gpustack/GLM-5.3-W4A8` | 372 GB | 447 GB | **H100/H200 only** — CUTLASS W4A8 is sm90-only |
-| `Inferact/GLM-5.3-NVFP4` | ~465 GB | 558 GB | **Blackwell only** (B200/B300) |
-| `zai-org/GLM-5.3-Flash` (FP8) | 328 GB | 386 GB | 8×H100+, nightly docker image only |
-| `RedHatAI/GLM-5.3-Flash-NVFP4` | — | 229 GB | **Blackwell only** |
-| `zai-org/GLM-5.3-BF16` | 1.5 TB | 1786 GB | multi-node |
+**Three ServiceNow UIs, one content script.** Classic puts the form in an
+iframe, Next Experience hides fields in shadow DOM, Service Portal uses its own
+id convention. Rather than three sets of selectors, fields are found by a
+shadow-piercing DOM walk matched on id, name, `aria-label` and label text.
 
-One A100 node tops out at 8 × 80 GB = **640 GB**, so on capacity alone only the
-two smallest variants are even in range — and both of those are gated on
-hardware the A100 does not have:
+**Drafts go to work notes, not customer-visible comments** — so a mis-click on
+Update can't send unreviewed model output to a researcher.
 
-- A100 is **sm80**. It has no native FP8 tensor cores (those arrive with sm89/sm90),
-  so every FP8 checkpoint above is off the table.
-- The W4A8 kernel that makes the 447 GB variant possible is explicitly sm90-only.
-- NVFP4 requires Blackwell (sm100).
+---
 
-Running GLM-5.3 would need at minimum **8×H200** for the native FP8 checkpoint,
-or 8×H100 for the W4A8 variant.
+## Status
 
-## What fits instead
+**Proven**
 
-Both are BF16, so they need no FP8 hardware and run natively on sm80:
+- Full data path with real tickets: ServiceNow → extension → OOD → Slurm job →
+  disk, including ticket-number extraction
+- Auth against tampered signatures and forged expiries
+- The OOD proxy path, field matching across all three UIs, partition/GPU limits
 
-| Model | Params | Weights | GPUs (A100-80GB) | Context |
-|---|---|---|---|---|
-| `zai-org/GLM-4.7-Flash` | ~30B MoE (64 experts, 4 active) | 62.5 GB | 2 | 198K |
-| `zai-org/GLM-4.5-Air` | 106B total / 12B active | 221 GB | 4 | 131K |
+**Not yet proven**
 
-GLM-4.7-Flash is the default: newest GLM generation that fits comfortably, same
-`glm47` tool-call parser and `glm45` reasoning parser as GLM-5.3, so client code
-written against it ports to GLM-5.3 unchanged if you later get Hopper access.
+- **The model has never produced a draft.** Every backend test used a stub
+  returning canned JSON, so prompt quality — the actual point — is unvalidated
+- The GLM stack hasn't completed a run on a GPU node
 
-## Environment notes
+**Next step:** one real inference, then 20–30 tickets through the local UI to
+tune the prompt. Everything built so far is plumbing around that untested core.
 
-- Everything (venv, uv, HF cache, Triton cache) lives under `/projects/rc/projects/ticket_mate`
-  to stay off the home quota. `env.sh` sets `HF_HOME` accordingly.
-- torch is pinned to the **cu129** build. vLLM 0.29.0 requires torch 2.13.0,
-  which is published only on the cu129 and cu130 indexes. cu129 is the safer
-  pick for an older A100 driver.
-- Do not install with `--torch-backend=auto` from a login/VNC node: with no GPU
-  present it silently resolves to `torch==2.13.0+cpu`, which cannot serve.
-  Always pass `--torch-backend=cu129` explicitly.
-- The module system is broken on the node this was set up from
-  (`modulecmd.tcl` missing), which is why the install uses a self-contained
-  `uv` + standalone CPython 3.12 rather than `module load anaconda3`.
+---
 
-## Verifying on a GPU node
+## Documentation
 
-The install was done on a CPU-only node, so the CUDA path is unverified. On the
-A100 node run:
+| Document | For |
+| --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Full design: components, security model, design decisions, deployment |
+| [VLLM_SETUP.md](VLLM_SETUP.md) | Model layer: which GLM fits A100 hardware, and the CUDA install trap |
+| [servicenow-ood-extension/README.md](servicenow-ood-extension/README.md) | Extension + OOD apps in detail |
+| [rc-copilot/README.md](rc-copilot/README.md) | Backend configuration and API |
 
-```bash
-source env.sh
-nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
-python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.device_count())"
-```
+---
 
-Expect `2.13.0+cu129` and a nonzero device count. Set `TP` in `serve_glm.sh` to
-match the GPU count.
+## Caveats
+
+This is a prototype built against one institution's setup. Hostnames, partition
+names and GPU types are Northeastern-specific and would need changing elsewhere.
+
+Every draft is a starting point. The model can be confidently wrong — that's why
+`caveats` is a first-class field in the response and is shown but deliberately
+never written into the ticket.
