@@ -165,55 +165,18 @@
     return true;
   }
 
-  /* ---------- UI ---------- */
+  /* ==================================================================
+     UI — a docked right rail that holds the whole workflow: connection,
+     ticket, instructions, draft. Nothing needs the toolbar popup.
+     ================================================================== */
 
-  function panel() {
-    let box = document.getElementById(PANEL_ID);
-    if (box) return box;
+  const RAIL_ID = "rc-copilot-rail";
+  const PANEL_ID = "rc-copilot-panel";
+  const OPEN_KEY = "rc-copilot-open";
 
-    box = document.createElement("div");
-    box.id = PANEL_ID;
-    box.className = "rc-panel";
-    box.setAttribute("role", "dialog");
-    box.setAttribute("aria-label", "RC Copilot draft");
-    box.innerHTML =
-      '<div class="rc-head">' +
-      '<span class="rc-badge-mark" aria-hidden="true"></span>' +
-      '<span class="rc-title">RC Copilot</span>' +
-      '<button type="button" class="rc-close" aria-label="Close">\u00d7</button>' +
-      "</div>" +
-      '<div class="rc-body"></div>';
-    box.querySelector(".rc-close").addEventListener("click", closePanel);
-    document.body.appendChild(box);
-    return box;
-  }
-
-  function closePanel() {
-    const box = document.getElementById(PANEL_ID);
-    if (box) box.removeAttribute("data-open");
-  }
-
-  function showPanel(html, footHtml) {
-    const box = panel();
-    box.querySelector(".rc-body").innerHTML = html;
-
-    const oldFoot = box.querySelector(".rc-foot");
-    if (oldFoot) oldFoot.remove();
-    if (footHtml) {
-      const foot = document.createElement("div");
-      foot.className = "rc-foot";
-      foot.innerHTML = footHtml;
-      box.appendChild(foot);
-    }
-
-    box.setAttribute("data-open", "1");
-    return box;
-  }
-
-  // Esc closes, as in any dialog.
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closePanel();
-  });
+  let extraInstructions = "";   // survives a redraft
+  let lastTicket = null;
+  let statusTimer = null;
 
   function escapeHtml(text) {
     const div = document.createElement("div");
@@ -221,32 +184,149 @@
     return div.innerHTML;
   }
 
-  function status(kind, message) {
-    showPanel('<p class="rc-msg rc-' + kind + '">' + escapeHtml(message) + "</p>");
+  const $ = (sel) => {
+    const p = document.getElementById(PANEL_ID);
+    return p ? p.querySelector(sel) : null;
+  };
+
+  /* ---------- open / closed ---------- */
+
+  function isOpen() {
+    try { return sessionStorage.getItem(OPEN_KEY) === "1"; } catch (e) { return false; }
+  }
+  function setOpen(open) {
+    try { sessionStorage.setItem(OPEN_KEY, open ? "1" : "0"); } catch (e) { /* private mode */ }
+    const panel = document.getElementById(PANEL_ID);
+    const rail = document.getElementById(RAIL_ID);
+    if (panel) panel.setAttribute("data-open", open ? "1" : "0");
+    if (rail) rail.setAttribute("data-hidden", open ? "1" : "0");
+    if (open) refresh();
   }
 
-  /* Spinner plus skeleton lines: shows both that we are working and roughly
-     what is about to appear. */
-  function working(message) {
-    showPanel(
-      '<div class="rc-working"><span class="rc-spin"></span>' +
-      '<span class="rc-working-text">' + escapeHtml(message) + "</span></div>" +
-      '<div class="rc-skel" style="width:88%"></div>' +
-      '<div class="rc-skel" style="width:74%"></div>' +
-      '<div class="rc-skel" style="width:93%"></div>' +
-      '<div class="rc-skel" style="width:61%"></div>'
-    );
+  /* ---------- structure, built once ---------- */
+
+  function build() {
+    if (document.getElementById(PANEL_ID)) return;
+
+    const rail = document.createElement("button");
+    rail.id = RAIL_ID;
+    rail.type = "button";
+    rail.className = "rc-rail";
+    rail.title = "Open RC Copilot";
+    rail.innerHTML =
+      '<span class="rc-rail-mark" aria-hidden="true"></span>' +
+      '<span class="rc-rail-text">RC Copilot</span>';
+    rail.addEventListener("click", () => setOpen(true));
+    document.body.appendChild(rail);
+
+    const panel = document.createElement("aside");
+    panel.id = PANEL_ID;
+    panel.className = "rc-panel";
+    panel.setAttribute("role", "complementary");
+    panel.setAttribute("aria-label", "RC Copilot");
+    panel.innerHTML = [
+      '<header class="rc-head">',
+        '<span class="rc-mark" aria-hidden="true"></span>',
+        '<span class="rc-title">RC Copilot</span>',
+        '<button type="button" class="rc-icon-btn rc-collapse" aria-label="Collapse">›</button>',
+      "</header>",
+
+      // status strip — the thing the toolbar popup used to own
+      '<button type="button" class="rc-status" data-state="idle">',
+        '<span class="rc-pulse" aria-hidden="true"><i></i></span>',
+        '<span class="rc-status-text">',
+          '<strong class="rc-status-title">Not checked</strong>',
+          '<span class="rc-status-sub">click to test the connection</span>',
+        "</span>",
+        '<span class="rc-status-go">Test</span>',
+      "</button>",
+
+      '<div class="rc-scroll">',
+        '<section class="rc-sec rc-sec-ticket">',
+          '<h3 class="rc-h">Ticket</h3>',
+          '<div class="rc-ticket"></div>',
+        "</section>",
+
+        '<section class="rc-sec rc-sec-compose">',
+          '<h3 class="rc-h">Instructions <span class="rc-opt">optional</span></h3>',
+          '<textarea class="rc-notes" rows="3" placeholder="Anything the model should know that the ticket doesn\'t say."></textarea>',
+          '<button type="button" class="rc-btn rc-btn-primary rc-go">Draft reply</button>',
+          '<p class="rc-hint">Ctrl+Enter to draft</p>',
+        "</section>",
+
+        '<section class="rc-sec rc-sec-result" hidden></section>',
+      "</div>",
+
+      '<footer class="rc-foot" hidden></footer>'
+    ].join("");
+
+    document.body.appendChild(panel);
+
+    panel.querySelector(".rc-collapse").addEventListener("click", () => setOpen(false));
+    panel.querySelector(".rc-status").addEventListener("click", testConnection);
+    panel.querySelector(".rc-go").addEventListener("click", draft);
+    panel.querySelector(".rc-notes").addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); draft(); }
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && isOpen()) setOpen(false);
+    });
+
+    panel.setAttribute("data-open", isOpen() ? "1" : "0");
+    rail.setAttribute("data-hidden", isOpen() ? "1" : "0");
   }
 
-  /* ---------- the flow ---------- */
+  /* ---------- status strip ---------- */
 
-  /* Extra instructions the RC member types before drafting. Kept per page so
-     a redraft after an unsatisfying answer starts from what they already
-     wrote. */
-  let extraInstructions = "";
+  function setStatus(state, title, sub, action) {
+    const el = $(".rc-status");
+    if (!el) return;
+    el.dataset.state = state;
+    $(".rc-status-title").textContent = title;
+    $(".rc-status-sub").textContent = sub || "";
+    $(".rc-status-go").textContent = action || "Test";
+  }
+
+  async function testConnection() {
+    setStatus("checking", "Checking…", "contacting the cluster", "…");
+
+    const ping = await chrome.runtime.sendMessage({ type: "PING" }).catch(() => null);
+    if (!ping || !ping.ok) {
+      setStatus("bad", "Not connected", (ping && ping.error) || "no reply", "Retry");
+      return false;
+    }
+
+    const login = await chrome.runtime.sendMessage({ type: "SIGN_IN" }).catch(() => null);
+    if (!login || !login.ok) {
+      setStatus("warn", "Reachable, not signed in", (login && login.error) || "", "Retry");
+      return false;
+    }
+
+    const model = (ping.data && ping.data.configured_model) || "?";
+    const mins = Math.max(0, Math.round((login.expiresAt * 1000 - Date.now()) / 60000));
+    const left = mins >= 60 ? Math.floor(mins / 60) + "h " + (mins % 60) + "m" : mins + "m";
+    setStatus("ok", "Connected", model + " · " + left + " left", "Recheck");
+
+    // Keep the countdown honest without re-pinging the cluster.
+    clearInterval(statusTimer);
+    statusTimer = setInterval(function () {
+      const m = Math.max(0, Math.round((login.expiresAt * 1000 - Date.now()) / 60000));
+      if (m <= 0) {
+        clearInterval(statusTimer);
+        setStatus("warn", "Session expired", "sign in again", "Retry");
+      } else if ($(".rc-status") && $(".rc-status").dataset.state === "ok") {
+        const l = m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m + "m";
+        $(".rc-status-sub").textContent = model + " · " + l + " left";
+      }
+    }, 60000);
+    return true;
+  }
+
+  /* ---------- ticket section ---------- */
 
   function gatherTicket() {
-    const ticketNumber = readValue(findField("ticket_number"));
+    const number = readValue(findField("ticket_number"));
     const short = readValue(findField("short_description"));
     const description = readValue(findField("description"));
     const activity = readActivity();
@@ -254,9 +334,10 @@
     if (!short && !description) return null;
 
     return {
-      number: ticketNumber,
+      number: number,
+      has: { number: !!number, short: !!short, description: !!description, activity: !!activity },
       text: [
-        ticketNumber ? "Ticket: " + ticketNumber : "",
+        number ? "Ticket: " + number : "",
         short ? "Short description: " + short : "",
         description ? "Description:\n" + description : "",
         activity ? "Work notes / activity:\n" + activity : ""
@@ -264,89 +345,100 @@
     };
   }
 
-  /* Step 1: show what was read and let them add context the ticket lacks. */
-  function compose(button) {
-    const ticket = gatherTicket();
+  function renderTicket() {
+    const box = $(".rc-ticket");
+    if (!box) return;
+    lastTicket = gatherTicket();
 
-    if (!ticket) {
-      // Name the UI and the path: that pair is what's needed to widen the
-      // selectors if this page uses different markup.
-      status(
-        "warn",
-        "Couldn't find ticket fields here. Detected UI: " + detectUi() +
-          ". Path: " + location.pathname +
-          ". Open an actual ticket form and try again — if it still fails, " +
-          "report this UI and path."
-      );
+    if (!lastTicket) {
+      box.innerHTML =
+        '<p class="rc-msg rc-warn"><span>No ticket fields on this page.<br>' +
+        "UI: " + escapeHtml(detectUi()) + "<br>Path: " + escapeHtml(location.pathname) +
+        "</span></p>";
+      const go = $(".rc-go");
+      if (go) go.disabled = true;
       return;
     }
 
-    const bits = [];
-    if (ticket.number) bits.push(escapeHtml(ticket.number));
-    bits.push(ticket.text.length.toLocaleString() + " characters read");
+    const go = $(".rc-go");
+    if (go) go.disabled = false;
 
-    const html =
-      '<p class="rc-msg rc-info"><span>' + bits.join(" · ") + "</span></p>" +
-      '<p class="rc-h">Anything the model should know?</p>' +
-      '<textarea class="rc-notes" rows="4" placeholder="Optional. e.g. they already tried reinstalling; keep it short and link the docs; this is a repeat of INC123."></textarea>' +
-      '<p class="rc-meta">Sent with the ticket. Leave blank to draft from the ticket alone.</p>';
+    const row = (ok, label) =>
+      '<li class="' + (ok ? "rc-yes" : "rc-no") + '">' + escapeHtml(label) + "</li>";
 
-    const foot =
-      '<button type="button" class="rc-btn rc-btn-primary rc-go">Draft reply</button>' +
-      '<button type="button" class="rc-btn rc-btn-ghost rc-cancel">Cancel</button>';
-
-    const box = showPanel(html, foot);
-    const notes = box.querySelector(".rc-notes");
-    notes.value = extraInstructions;
-    notes.focus();
-
-    const go = function () {
-      extraInstructions = notes.value.trim();
-      draftNow(button, ticket, extraInstructions);
-    };
-
-    box.querySelector(".rc-go").addEventListener("click", go);
-    box.querySelector(".rc-cancel").addEventListener("click", closePanel);
-    // Ctrl/Cmd+Enter submits, so the common "nothing to add" case is one key.
-    notes.addEventListener("keydown", function (e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); go(); }
-    });
+    box.innerHTML =
+      '<div class="rc-ticket-id">' +
+        (lastTicket.number ? escapeHtml(lastTicket.number) : "<em>no number</em>") +
+        '<span class="rc-chars">' + lastTicket.text.length.toLocaleString() + " chars</span>" +
+      "</div>" +
+      '<ul class="rc-checks">' +
+        row(lastTicket.has.short, "short description") +
+        row(lastTicket.has.description, "description") +
+        row(lastTicket.has.activity, "activity stream") +
+      "</ul>";
   }
 
-  /* Step 2: send it. */
-  async function draftNow(button, ticket, instructions) {
-    const labelEl = button.querySelector(".rc-fab-label") || button;
-    const label = labelEl.textContent;
-    const ticketNumber = ticket.number;
-    const ticketText = ticket.text;
+  /* ---------- drafting ---------- */
 
-    button.disabled = true;
-    labelEl.textContent = "Drafting…";
-    working("Drafting a reply. This can take a minute on a busy cluster.");
+  function resultSection() { return $(".rc-sec-result"); }
+
+  function showResultHtml(html, footHtml) {
+    const sec = resultSection();
+    const foot = $(".rc-foot");
+    sec.hidden = false;
+    sec.innerHTML = html;
+    if (footHtml) { foot.hidden = false; foot.innerHTML = footHtml; }
+    else { foot.hidden = true; foot.innerHTML = ""; }
+    sec.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function draft() {
+    if (!lastTicket) renderTicket();
+    if (!lastTicket) return;
+
+    extraInstructions = ($(".rc-notes").value || "").trim();
+
+    const go = $(".rc-go");
+    go.disabled = true;
+    go.textContent = "Drafting…";
+
+    showResultHtml(
+      '<h3 class="rc-h">Draft</h3>' +
+      '<div class="rc-working"><span class="rc-spin"></span>' +
+      '<span class="rc-working-text">Asking the model. Up to a minute on a busy cluster.</span></div>' +
+      '<div class="rc-skel" style="width:90%"></div>' +
+      '<div class="rc-skel" style="width:72%"></div>' +
+      '<div class="rc-skel" style="width:84%"></div>'
+    );
 
     let reply;
     try {
       reply = await chrome.runtime.sendMessage({
         type: "DRAFT",
-        ticketText: ticketText,
-        ticketNumber: ticketNumber,
-        extraInstructions: instructions || ""
+        ticketText: lastTicket.text,
+        ticketNumber: lastTicket.number,
+        extraInstructions: extraInstructions
       });
     } catch (err) {
       reply = { ok: false, error: "Extension was reloaded — refresh this page." };
     }
 
-    button.disabled = false;
-    labelEl.textContent = label;
+    go.disabled = false;
+    go.textContent = "Draft reply";
 
     if (!reply || !reply.ok) {
-      status("error", (reply && reply.error) || "Unknown error.");
+      showResultHtml('<h3 class="rc-h">Draft</h3><p class="rc-msg rc-error"><span>' +
+        escapeHtml((reply && reply.error) || "Unknown error.") + "</span></p>");
       return;
     }
 
-    const data = reply.data || {};
-    const cfgReply = await chrome.runtime.sendMessage({ type: "GET_CONFIG" });
-    const targetKey = (cfgReply && cfgReply.data && cfgReply.data.targetField) || "work_notes";
+    renderResult(reply.data || {});
+  }
+
+  async function renderResult(data) {
+    const cfg = await chrome.runtime.sendMessage({ type: "GET_CONFIG" }).catch(() => null);
+    const targetKey = (cfg && cfg.data && cfg.data.targetField) || "work_notes";
+    const targetName = targetKey.replace("_", " ");
 
     const target = findField(targetKey);
     let wrote = false;
@@ -354,54 +446,47 @@
       wrote = setFieldValue(target, data.draft_response);
     }
 
-    /* Caveats are the "check before sending" list. They must NOT go into the
-       ticket, but they must not be silently dropped either. */
-    const caveats = Array.isArray(data.caveats) ? data.caveats : [];
-    const confidence = typeof data.confidence === "number" ? data.confidence : null;
     const level = data.confidence_label || "unknown";
+    const pct = typeof data.confidence === "number" ? Math.round(data.confidence * 100) : null;
+    const caveats = Array.isArray(data.caveats) ? data.caveats : [];
 
-    const pct = confidence === null ? null : Math.round(confidence * 100);
+    let html = '<h3 class="rc-h">Result</h3>';
 
-    let html = "";
-
-    // Confidence first: it decides how much of the rest you should trust.
     html +=
       '<div class="rc-conf rc-' + escapeHtml(level) + '">' +
         '<div class="rc-conf-top">' +
           '<span class="rc-conf-label">Confidence</span>' +
           '<span class="rc-conf-val">' + escapeHtml(level) +
-            (pct === null ? "" : " · " + pct + "%") +
-          "</span>" +
+          (pct === null ? "" : " · " + pct + "%") + "</span>" +
         "</div>" +
         '<div class="rc-meter"><i style="width:' + (pct === null ? 0 : pct) + '%"></i></div>' +
       "</div>";
 
     html += wrote
-      ? '<p class="rc-msg rc-ok"><span>Written into <b>' +
-        escapeHtml(targetKey.replace("_", " ")) +
-        "</b> — not saved. Review, edit, then Update.</span></p>"
-      : '<p class="rc-msg rc-warn"><span>No writable ' +
-        escapeHtml(targetKey.replace("_", " ")) +
-        " field here, so the draft is below instead.</span></p>";
-
-    if (instructions) {
-      html += '<p class="rc-h">Your instructions</p>';
-      html += '<p class="rc-summary rc-yours">' + escapeHtml(instructions) + "</p>";
-    }
+      ? '<p class="rc-msg rc-ok"><span>Written into <b>' + escapeHtml(targetName) +
+        "</b>, unsaved. Review before Update.</span></p>"
+      : '<p class="rc-msg rc-warn"><span>No writable ' + escapeHtml(targetName) +
+        " field — copy it from below.</span></p>";
 
     if (data.problem_summary) {
-      html += '<p class="rc-h">Summary</p>';
-      html += '<p class="rc-summary">' + escapeHtml(data.problem_summary) + "</p>";
+      html += '<h3 class="rc-h">Summary</h3><p class="rc-summary">' +
+              escapeHtml(data.problem_summary) + "</p>";
+    }
+
+    if (Array.isArray(data.suggested_steps) && data.suggested_steps.length) {
+      html += '<h3 class="rc-h">Steps</h3><ol class="rc-list rc-steps">';
+      for (const s of data.suggested_steps) html += "<li>" + escapeHtml(s) + "</li>";
+      html += "</ol>";
     }
 
     if (caveats.length) {
-      html += '<p class="rc-h">Check before sending</p><ul class="rc-list">';
+      html += '<h3 class="rc-h">Check before sending</h3><ul class="rc-list rc-caveats">';
       for (const c of caveats) html += "<li>" + escapeHtml(c) + "</li>";
       html += "</ul>";
     }
 
-    html += '<p class="rc-h">Draft</p>';
-    html += '<textarea class="rc-draft" spellcheck="true">' +
+    html += '<h3 class="rc-h">Draft</h3>' +
+            '<textarea class="rc-draft" spellcheck="true">' +
             escapeHtml(data.draft_response || "") + "</textarea>";
 
     const meta = [];
@@ -411,73 +496,58 @@
 
     const foot =
       '<button type="button" class="rc-btn rc-btn-primary rc-copy">Copy</button>' +
-      '<button type="button" class="rc-btn rc-btn-ghost rc-insert">Insert</button>' +
-      '<button type="button" class="rc-btn rc-btn-ghost rc-redraft">Redraft</button>';
+      '<button type="button" class="rc-btn rc-btn-ghost rc-insert">Insert</button>';
 
-    const box = showPanel(html, foot);
-    const area = box.querySelector(".rc-draft");
+    showResultHtml(html, foot);
 
-    box.querySelector(".rc-copy").addEventListener("click", function () {
+    const area = $(".rc-draft");
+    const flash = (btn, text) => {
+      const old = btn.textContent;
+      btn.textContent = text;
+      btn.classList.add("rc-btn-done");
+      setTimeout(() => { btn.textContent = old; btn.classList.remove("rc-btn-done"); }, 1500);
+    };
+
+    $(".rc-copy").addEventListener("click", function () {
       const btn = this;
-      const done = function () {
-        btn.textContent = "Copied ✓";
-        btn.classList.add("rc-btn-done");
-        setTimeout(function () {
-          btn.textContent = "Copy";
-          btn.classList.remove("rc-btn-done");
-        }, 1600);
-      };
-      navigator.clipboard.writeText(area.value).then(done, function () {
-        area.select();
-        try { document.execCommand("copy"); done(); } catch (e) { /* selected; Ctrl+C */ }
-      });
+      navigator.clipboard.writeText(area.value).then(
+        () => flash(btn, "Copied ✓"),
+        () => { area.select(); try { document.execCommand("copy"); flash(btn, "Copied ✓"); } catch (e) {} }
+      );
     });
 
-    // Lets you edit in the panel and push the edited version into the ticket.
-    box.querySelector(".rc-redraft").addEventListener("click", function () {
-      compose(button);
-    });
-
-    box.querySelector(".rc-insert").addEventListener("click", function () {
-      const btn = this;
+    $(".rc-insert").addEventListener("click", function () {
       const node = findField(targetKey);
-      if (node && !node.readOnly && setFieldValue(node, area.value)) {
-        btn.textContent = "Inserted ✓";
-        btn.classList.add("rc-btn-done");
-        setTimeout(function () {
-          btn.textContent = "Insert again";
-          btn.classList.remove("rc-btn-done");
-        }, 1600);
-      } else {
-        btn.textContent = "No field found";
-        setTimeout(function () { btn.textContent = "Insert again"; }, 1600);
-      }
+      if (node && !node.readOnly && setFieldValue(node, area.value)) flash(this, "Inserted ✓");
+      else flash(this, "No field");
     });
   }
 
-  function injectButton() {
-    if (document.getElementById(BUTTON_ID)) return;
-    // Only in the frame that actually holds the form — with all_frames:true we
+  /* ---------- lifecycle ---------- */
+
+  function refresh() {
+    renderTicket();
+    if ($(".rc-status") && $(".rc-status").dataset.state === "idle") testConnection();
+  }
+
+  function mount() {
+    // Only in the frame that actually holds the form: with all_frames:true we
     // also run in nav and shell frames, which have no ticket fields.
     if (!findField("short_description") && !findField("description")) return;
-
-    const button = document.createElement("button");
-    button.id = BUTTON_ID;
-    button.type = "button";
-    button.className = "rc-fab";
-    button.innerHTML = '<span class="rc-ico" aria-hidden="true"></span><span class="rc-fab-label">Draft reply</span>';
-    button.title = "Read this ticket, draft a reply with RC Copilot, and fill the work notes";
-    button.addEventListener("click", () => compose(button));
-    document.body.appendChild(button);
+    build();
+    if (isOpen()) refresh();
   }
 
-  injectButton();
+  mount();
 
   /* ServiceNow swaps forms in without a page load. */
   let pending = null;
   const observer = new MutationObserver(function () {
     clearTimeout(pending);
-    pending = setTimeout(injectButton, 400);
+    pending = setTimeout(function () {
+      mount();
+      if (isOpen()) renderTicket();
+    }, 500);
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
 })();
