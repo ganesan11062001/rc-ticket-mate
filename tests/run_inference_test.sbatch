@@ -38,6 +38,11 @@ TICKET="${TICKET:-$TM_ROOT/tests/sample_ticket.txt}"
 INSTRUCTIONS="${INSTRUCTIONS:-}"
 
 cd "${SLURM_SUBMIT_DIR:-$TM_ROOT/tests}" || exit 1
+
+# Slurm opened --output=logs/... before this script ran, and does not create
+# intermediate directories. If logs/ was missing at submission time there is
+# nowhere for this message to go -- which is exactly the confusing case -- so
+# keep the directory in the repo rather than relying on this.
 mkdir -p logs
 
 echo "======================================================================"

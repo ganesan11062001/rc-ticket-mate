@@ -19,6 +19,13 @@ __pycache__/
 
 # --- run artifacts ---
 logs/
+# ...but tests/logs must EXIST at submission time: Slurm opens --output before
+# the job script runs and will not create the directory itself. Git cannot
+# re-include a file under an excluded directory, so un-exclude the directory
+# first, then re-exclude its contents apart from the keepfile.
+!tests/logs/
+tests/logs/*
+!tests/logs/.gitkeep
 *.log
 slurm-*.out
 *.sbatch.out

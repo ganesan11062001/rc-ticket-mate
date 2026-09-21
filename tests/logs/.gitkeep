@@ -1,0 +1,3 @@
+Slurm opens the --output path before the job script runs and does not create
+intermediate directories, so this directory must exist at submission time.
+Keep this file so it survives a clone and a clean.
