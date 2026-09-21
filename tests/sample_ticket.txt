@@ -1,0 +1,22 @@
+Ticket: INC0012345
+
+Short description: Matplotlib import fails after loading anaconda3/2024.06
+
+Description:
+I'm trying to run a plotting script on Explorer and it dies immediately on the
+import. This worked about a month ago with the same script.
+
+  $ module load anaconda3/2024.06
+  $ python plot_results.py
+  Traceback (most recent call last):
+    File "plot_results.py", line 3, in <module>
+      import matplotlib.pyplot as plt
+  ...
+  ValueError: numpy.dtype size changed, may indicate binary incompatibility.
+  Expected 96 from C header, got 88 from PyObject
+
+I have a conda env called myenv that I created last year. I'm submitting to the
+short partition, 4 cores, 16G. Can you tell me what changed?
+
+Work notes / activity:
+2026-09-18 14:02 - Researcher: attached the full traceback.
