@@ -39,7 +39,7 @@ the model can be confidently wrong — read the **Check before sending** list.
 Requires Python 3.9+ (developed and tested against 3.11).
 
 ```bash
-cd rc-copilot
+cd backend
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -51,15 +51,15 @@ cp .env.example .env     # then edit .env — see below
 Run it:
 
 ```bash
-uvicorn backend.main:app --reload --port 8080
+uvicorn app.main:app --reload --port 8080
 ```
 
 Open <http://127.0.0.1:8080>.
 
 `--port 8080` is worth typing: uvicorn's own default is 8000, which is also
-vLLM's default, so plain `uvicorn backend.main:app --reload` will collide with a
+vLLM's default, so plain `uvicorn app.main:app --reload` will collide with a
 vLLM server (or an SSH tunnel to one) on the same machine. Alternatively run
-`python -m backend.main`, which reads `APP_PORT` from your `.env`.
+`python -m app.main`, which reads `APP_PORT` from your `.env`.
 
 The status dot in the top right tells you whether the model server is reachable.
 
@@ -185,7 +185,7 @@ To skip the copy-paste, on the laptop:
 ```bash
 eval "$(ssh you@login.explorer.northeastern.edu \
         /projects/rc/projects/ticket_mate/vllm_status.sh --env)"
-uvicorn backend.main:app --port 8080
+uvicorn app.main:app --port 8080
 ```
 
 `--env` emits only `export VLLM_BASE_URL=...` and `export VLLM_MODEL_NAME=...`.
@@ -208,7 +208,7 @@ daemon, usually seconds after `Application startup complete`. Either drop the
 flag, or scope the watcher so it never sees `.venv`:
 
 ```bash
-uvicorn backend.main:app --port 18080 --reload --reload-dir backend --reload-dir frontend
+uvicorn app.main:app --port 18080 --reload --reload-dir app --reload-dir web
 ```
 
 **Ports are host-wide.** `Address already in use` on port 8080 usually means
@@ -222,7 +222,7 @@ Better than either: run on a compute node, which is where vLLM lives anyway, so
 ```bash
 srun --pty --time=4:00:00 --mem=4G bash
 hostname                       # tunnel to this node, not the login node
-uvicorn backend.main:app --port 18080
+uvicorn app.main:app --port 18080
 ```
 
 A note on `--host`: uvicorn binds `127.0.0.1` by default. Keep it that way. On a
@@ -234,7 +234,7 @@ add `--host 0.0.0.0` on a login node.
 
 ## Browser extension
 
-Lives in [`../servicenow-ood-extension`](../servicenow-ood-extension), not here.
+Lives in [`../extension`](../extension), not here.
 It reads the open ServiceNow ticket, calls this backend through the Open
 OnDemand proxy, and writes the draft into the ticket's work notes.
 
@@ -275,7 +275,7 @@ All settings live in `.env` (see `.env.example` for the annotated version).
 | `VLLM_BASE_URL` | `http://localhost:8000/v1` | Include the trailing `/v1` |
 | `VLLM_MODEL_NAME` | `meta-llama/Llama-3.1-8B-Instruct` | Must match `/v1/models` |
 | `VLLM_API_KEY` | *(empty)* | Only if the server requires auth |
-| `APP_PORT` | `8080` | Used by `python -m backend.main` |
+| `APP_PORT` | `8080` | Used by `python -m app.main` |
 | `TEMPERATURE` | `0.2` | Low keeps the JSON stable |
 | `MAX_TOKENS` | `1400` | Raise if drafts get truncated |
 | `REQUEST_TIMEOUT_SECONDS` | `120` | Cluster queues can be slow |
@@ -336,7 +336,7 @@ rc-copilot/
 ```
 
 The browser extension lives one level up, in
-[`../servicenow-ood-extension`](../servicenow-ood-extension).
+[`../extension`](../extension).
 
 ---
 
@@ -346,6 +346,6 @@ No vector store or retrieval, and no database — drafts are not stored anywhere
 
 This backend has no knowledge of ServiceNow: it takes text in and returns a
 draft. The reading and writing of ticket pages lives entirely in
-[`../servicenow-ood-extension`](../servicenow-ood-extension), which is also
+[`../extension`](../extension), which is also
 where the "nothing is saved automatically" guarantee is enforced — the draft is
 placed in the work notes field unsaved, for a human to review and submit.

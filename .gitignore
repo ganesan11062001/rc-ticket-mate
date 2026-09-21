@@ -26,7 +26,7 @@ slurm-*.out
 # --- build artifacts ---
 *.zip
 # ...but ship the packaged extension, so it can be downloaded directly
-!rc-copilot-servicenow-extension.zip
+!dist/*.zip
 
 # --- editor / agent ---
 .claude/

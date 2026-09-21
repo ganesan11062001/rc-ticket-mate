@@ -102,7 +102,7 @@ vLLM is serving.
 
      export VLLM_BASE_URL=http://127.0.0.1:${LOCAL_PORT}/v1
      export VLLM_MODEL_NAME=${model}
-     uvicorn backend.main:app --port 8080
+     uvicorn app.main:app --port 8080
 
 3. Open http://127.0.0.1:8080 , or click the RC Copilot extension icon.
 

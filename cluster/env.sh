@@ -20,7 +20,7 @@ export VLLM_CACHE_ROOT="$TM_ROOT/.cache/vllm"
 export OUTLINES_CACHE_DIR="$TM_ROOT/.cache/outlines"
 export TRITON_CACHE_DIR="$TM_ROOT/.cache/triton"
 
-mkdir -p "$HF_HOME" "$VLLM_CACHE_ROOT" "$TRITON_CACHE_DIR"
+mkdir -p "$HF_HOME" "$VLLM_CACHE_ROOT" "$TRITON_CACHE_DIR" "${OUTLINES_CACHE_DIR:-/tmp}"
 
 # CUDA runtime from the cluster module tree (A100 = sm80).
 # The torch wheels bundle their own CUDA libs, so this is only needed for nvcc

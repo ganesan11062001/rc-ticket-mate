@@ -23,7 +23,7 @@ from .models import (
     LoginResponse,
 )
 
-FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 logger = logging.getLogger("rc_copilot")
 
@@ -240,17 +240,17 @@ async def health():
 
 
 # Mounted last so the /api/* routes above win. html=True serves index.html at /.
-if FRONTEND_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+if WEB_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="frontend")
 else:  # pragma: no cover - only hit if the repo layout is broken
-    logger.error("frontend directory not found at %s", FRONTEND_DIR)
+    logger.error("frontend directory not found at %s", WEB_DIR)
 
 
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "backend.main:app",
+        "app.main:app",
         host=os.getenv("APP_HOST", "127.0.0.1"),
         port=get_settings().app_port,
         reload=True,

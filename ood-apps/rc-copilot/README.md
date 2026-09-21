@@ -46,7 +46,7 @@ Sandbox apps under `~/ondemand/dev` appear in the dashboard under **My Sandbox
 Apps** once Developer Mode is on — you already run several.
 
 ```bash
-cp -r ood-app ~/ondemand/dev/rc-copilot
+cp -r ood-apps/rc-copilot ~/ondemand/dev/rc-copilot
 ```
 
 Then in OOD: **Develop → My Sandbox Apps → RC Copilot → Launch**.

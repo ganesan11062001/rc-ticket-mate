@@ -1,15 +1,16 @@
 /* Runs on ServiceNow pages. Reads the open ticket, asks the backend for a
  * draft, writes it into the work notes.
  *
- * Handles both ServiceNow UIs:
+ * Handles all three ServiceNow UIs:
  *
  *   Classic          form lives inside an iframe (#gsft_main), plain DOM.
  *                    The manifest sets all_frames:true so we run in there.
  *   Next Experience  form is web components with closed-ish shadow roots, so
  *                    querySelector alone never reaches the inputs.
+ *   Service Portal   AngularJS, sp_formfield_* ids.
  *
- * Both are handled by collecting fields with a shadow-piercing walk instead of
- * relying on selectors that only work in one of them.
+ * All three are handled by collecting fields with a shadow-piercing walk
+ * instead of selectors that only work in one of them.
  */
 
 (function () {
@@ -165,12 +166,12 @@
   }
 
   /* ==================================================================
-     UI — a docked right rail that holds the whole workflow: connection,
-     ticket, instructions, draft. Nothing needs the toolbar popup.
+     UI — a "Draft reply" button that opens a docked right-hand panel
+     holding the whole workflow: connection, ticket, instructions, draft.
+     Nothing needs the toolbar popup.
      ================================================================== */
 
-  const RAIL_ID = "rc-copilot-rail";
-  const PANEL_ID = "rc-copilot-panel";
+  const FAB_ID = "rc-copilot-fab";
   const OPEN_KEY = "rc-copilot-open";
 
   let extraInstructions = "";   // survives a redraft
@@ -196,9 +197,9 @@
   function setOpen(open) {
     try { sessionStorage.setItem(OPEN_KEY, open ? "1" : "0"); } catch (e) { /* private mode */ }
     const panel = document.getElementById(PANEL_ID);
-    const rail = document.getElementById(RAIL_ID);
+    const fab = document.getElementById(FAB_ID);
     if (panel) panel.setAttribute("data-open", open ? "1" : "0");
-    if (rail) rail.setAttribute("data-hidden", open ? "1" : "0");
+    if (fab) fab.setAttribute("data-hidden", open ? "1" : "0");
     if (open) refresh();
   }
 
@@ -207,16 +208,18 @@
   function build() {
     if (document.getElementById(PANEL_ID)) return;
 
-    const rail = document.createElement("button");
-    rail.id = RAIL_ID;
-    rail.type = "button";
-    rail.className = "rc-rail";
-    rail.title = "Open RC Copilot";
-    rail.innerHTML =
-      '<span class="rc-rail-mark" aria-hidden="true"></span>' +
-      '<span class="rc-rail-text">RC Copilot</span>';
-    rail.addEventListener("click", () => setOpen(true));
-    document.body.appendChild(rail);
+    // A labelled pill, not a subtle edge tab: the entry point has to be
+    // obvious on a page as busy as a ServiceNow form.
+    const fab = document.createElement("button");
+    fab.id = FAB_ID;
+    fab.type = "button";
+    fab.className = "rc-fab";
+    fab.title = "Open RC Copilot and draft a reply to this ticket";
+    fab.innerHTML =
+      '<span class="rc-fab-ico" aria-hidden="true"></span>' +
+      '<span class="rc-fab-label">Draft reply</span>';
+    fab.addEventListener("click", () => setOpen(true));
+    document.body.appendChild(fab);
 
     const panel = document.createElement("aside");
     panel.id = PANEL_ID;
@@ -273,7 +276,7 @@
     });
 
     panel.setAttribute("data-open", isOpen() ? "1" : "0");
-    rail.setAttribute("data-hidden", isOpen() ? "1" : "0");
+    fab.setAttribute("data-hidden", isOpen() ? "1" : "0");
   }
 
   /* ---------- status strip ---------- */
@@ -529,15 +532,49 @@
     if ($(".rc-status") && $(".rc-status").dataset.state === "idle") testConnection();
   }
 
+  function hasFields() {
+    return !!(findField("short_description") || findField("description"));
+  }
+
+  /* We run in every frame (all_frames:true), so exactly one must own the UI.
+     The frame holding the ticket fields wins. If no frame has fields -- which
+     is what happens when the selectors do not match this ServiceNow UI -- the
+     top frame still shows the button, and the panel explains why nothing was
+     found. Failing visibly matters more than failing tidily: a missing button
+     with no error is impossible to diagnose. */
+  function claimUi() {
+    let top = null;
+    try { top = window.top; } catch (e) { /* cross-origin */ }
+
+    if (hasFields()) {
+      try { if (top) top.__rcCopilotOwned = true; } catch (e) {}
+      return true;
+    }
+    return false;
+  }
+
   function mount() {
-    // Only in the frame that actually holds the form: with all_frames:true we
-    // also run in nav and shell frames, which have no ticket fields.
-    if (!findField("short_description") && !findField("description")) return;
-    build();
-    if (isOpen()) refresh();
+    if (document.getElementById(PANEL_ID)) {
+      if (isOpen()) refresh();
+      return;
+    }
+    if (claimUi()) {
+      build();
+      if (isOpen()) refresh();
+    }
   }
 
   mount();
+
+  /* Fallback: if after a grace period no frame claimed the UI, the top frame
+     shows the button anyway so the failure is visible and reportable. */
+  if (window === window.top) {
+    setTimeout(function () {
+      let owned = false;
+      try { owned = !!window.__rcCopilotOwned; } catch (e) {}
+      if (!owned && !document.getElementById(PANEL_ID)) build();
+    }, 2500);
+  }
 
   /* ServiceNow swaps forms in without a page load. */
   let pending = null;

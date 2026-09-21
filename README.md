@@ -55,7 +55,7 @@ RC Copilot → Launch*. It defaults to a small 3B model on any free GPU, which
 schedules in seconds; switch to GLM-4.7-Flash once you're happy it works.
 
 **2 — Install the extension.** Download
-[`rc-copilot-servicenow-extension.zip`](rc-copilot-servicenow-extension.zip),
+[`dist/rc-copilot-extension.zip`](dist/rc-copilot-extension.zip),
 unzip it, then `chrome://extensions` → Developer mode → **Load unpacked** →
 select the folder.
 
@@ -69,13 +69,13 @@ address and token on its own; there's nothing to copy.
 The fastest loop for tuning the prompt needs neither the extension nor OOD:
 
 ```bash
-cd rc-copilot
+cd backend
 pip install -r requirements.txt
-uvicorn backend.main:app --port 8080
+uvicorn app.main:app --port 8080
 ```
 
 Paste tickets at `http://127.0.0.1:8080` and edit
-[`backend/prompts.py`](rc-copilot/backend/prompts.py).
+[`app/prompts.py`](backend/app/prompts.py).
 
 ---
 
@@ -83,14 +83,16 @@ Paste tickets at `http://127.0.0.1:8080` and edit
 
 | Path | What it is |
 | --- | --- |
-| [`rc-copilot/`](rc-copilot) | FastAPI backend — prompt, vLLM client, auth. Knows nothing about ServiceNow |
-| [`servicenow-ood-extension/extension/`](servicenow-ood-extension/extension) | Chrome MV3 extension |
-| [`servicenow-ood-extension/ood-app/`](servicenow-ood-extension/ood-app) | OOD interactive app: vLLM + backend in one job |
-| [`servicenow-ood-extension/ood-app-capture/`](servicenow-ood-extension/ood-app-capture) | Same, no model — stores what's sent, for testing the data path |
-| [`servicenow-ood-extension/cluster/`](servicenow-ood-extension/cluster) | sbatch launchers, capture server |
+| [`backend/`](backend) | FastAPI service — prompt, vLLM client, auth. Knows nothing about ServiceNow |
+| [`extension/`](extension) | Chrome MV3 extension |
+| [`ood-apps/rc-copilot/`](ood-apps/rc-copilot) | OOD interactive app: vLLM + backend in one job |
+| [`ood-apps/capture-test/`](ood-apps/capture-test) | Same, no model — stores what's sent, for testing the data path |
+| [`cluster/`](cluster) | Slurm launchers, install and diagnostic scripts |
+| [`dist/`](dist) | Packaged extension zip |
+| [`docs/`](docs) | Diagram and extension guide |
 
-Helper scripts: `install_vllm.sh --check`, `check_gpus.sh`, `vllm_status.sh`,
-`smoke_test.py`.
+Helper scripts live in `cluster/`: `install_vllm.sh --check`, `check_gpus.sh`,
+`vllm_status.sh`, `smoke_test.py`.
 
 ---
 
@@ -142,8 +144,8 @@ tune the prompt. Everything built so far is plumbing around that untested core.
 | --- | --- |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Full design: components, security model, design decisions, deployment |
 | [VLLM_SETUP.md](VLLM_SETUP.md) | Model layer: which GLM fits A100 hardware, and the CUDA install trap |
-| [servicenow-ood-extension/README.md](servicenow-ood-extension/README.md) | Extension + OOD apps in detail |
-| [rc-copilot/README.md](rc-copilot/README.md) | Backend configuration and API |
+| [docs/EXTENSION.md](docs/EXTENSION.md) | Extension + OOD apps in detail |
+| [backend/README.md](backend/README.md) | Backend configuration and API |
 
 ---
 

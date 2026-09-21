@@ -27,14 +27,14 @@ from pathlib import Path
 
 # Reuse the product's auth rather than reimplementing it: the point is to test
 # the real thing.
-RC_ROOT = Path(__file__).resolve().parent.parent.parent / "rc-copilot"
-sys.path.insert(0, str(RC_ROOT))
+BACKEND_ROOT = Path(__file__).resolve().parent.parent / "backend"
+sys.path.insert(0, str(BACKEND_ROOT))
 
 from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from backend import auth  # noqa: E402
+from app import auth  # noqa: E402
 
 # Default to scratch: captures are bulky and disposable, and scratch is the
 # right filesystem for that. NOTE scratch is mode 770 -- group-accessible -- so

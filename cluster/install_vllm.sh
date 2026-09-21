@@ -143,8 +143,8 @@ say ""
 if report; then
   say ""
   say "Done. Next:"
-  say "    source $TM_ROOT/env.sh"
-  say "    sbatch servicenow-ood-extension/cluster/serve_stack.sbatch"
+  say "    source $TM_ROOT/cluster/env.sh"
+  say "    sbatch cluster/serve_stack.sbatch"
 else
   say ""
   bad "install completed but verification failed -- see above"

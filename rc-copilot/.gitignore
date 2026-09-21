@@ -1,9 +1,0 @@
-.env
-logs/
-*.log
-
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-*.egg-info/

@@ -23,21 +23,29 @@ unsaved; a human reviews it and clicks Update.
 ## Layout
 
 ```
-servicenow-ood-extension/
-  extension/
-    manifest.json       MV3: popup + service worker + ServiceNow content script
-    background.js       Only place that fetches. Owns sessions and all error text.
-    content.js          Reads the ticket, writes the draft. Classic + Next Experience.
-    content.css         Id-scoped styles (ServiceNow's CSS is broad)
-    popup.html/js/css   URL, access token, target field, Test Connection
-    icons/
-  cluster/
-    serve_stack.sbatch      THE PRODUCT: vLLM + rc-copilot in one GPU job
-    test_connection.sbatch  Pipeline test with no model — run this first
-    mock_server.py          stdlib-only JSON endpoint used by the above
+extension/              Chrome MV3 extension
+  manifest.json           popup + service worker + content scripts
+  background.js           the only place that fetches; owns sessions
+  content.js              reads the ticket, writes the draft
+  content.css             id-scoped styles (ServiceNow's CSS is broad)
+  ood-connect.js          auto-configures from the OOD session card
+  popup.html/js/css       status, target field, manual fallback
+  check.py                static checks -- run before packaging
+  icons/
+
+ood-apps/               Open OnDemand interactive apps
+  rc-copilot/             the real thing: vLLM + backend in one GPU job
+  capture-test/           no model; stores what is sent, echoes it back
+
+cluster/                Slurm launchers and helpers
+  serve_stack.sbatch      vLLM + backend, one job (sbatch route)
+  capture.sbatch          capture server, CPU only
+  capture_server.py       same API as the backend, stores instead of drafting
+  test_connection.sbatch  cheapest OOD probe: no model, no auth
+  mock_server.py          stdlib JSON endpoint used by the above
 ```
 
-The backend itself is [`../rc-copilot`](../rc-copilot) — this directory adds the
+The backend itself is [`../backend`](../backend) — this directory adds the
 browser half and the cluster launcher.
 
 ---
@@ -49,7 +57,7 @@ browser half and the cluster launcher.
 Do this before involving a model. It isolates the proxy from everything else.
 
 ```bash
-cd servicenow-ood-extension/cluster
+cd cluster
 sbatch test_connection.sbatch
 tail -f logs/ood-test-<jobid>.out
 ```

@@ -85,11 +85,11 @@ stops there.
 
 | Directory | Lines | What it is |
 | --- | --- | --- |
-| `rc-copilot/backend/` | ~990 py | FastAPI service: prompt, vLLM client, auth |
-| `rc-copilot/frontend/` | ~900 | Standalone web UI (paste-a-ticket), no build step |
-| `servicenow-ood-extension/extension/` | ~840 js | Chrome MV3 extension |
-| `servicenow-ood-extension/ood-app*/` | ~500 | Two OOD interactive apps |
-| `servicenow-ood-extension/cluster/` | ~650 | sbatch launchers + capture-test server |
+| `backend/app/` | ~990 py | FastAPI service: prompt, vLLM client, auth |
+| `backend/web/` | ~900 | Standalone web UI (paste-a-ticket), no build step |
+| `extension/` | ~870 js | Chrome MV3 extension |
+| `ood-apps/` | ~500 | Two OOD interactive apps |
+| `cluster/` | ~900 | Slurm launchers, install/diagnostic scripts, capture server |
 
 ### 3.1 Backend (`rc-copilot`)
 
@@ -389,12 +389,12 @@ ls /scratch/$USER/rc_copilot_captures/
 #    the pipeline is confirmed.
 
 # 3. Prompt iteration — fastest loop, no extension, no OOD
-cd rc-copilot && uvicorn backend.main:app --port 8080
+cd backend && uvicorn app.main:app --port 8080
 #    then paste tickets at http://127.0.0.1:8080
 ```
 
 Helper scripts: `install_vllm.sh --check`, `check_gpus.sh`, `vllm_status.sh`,
-`servicenow-ood-extension/ood-app/check_modes.sh`.
+`ood-apps/rc-copilot/check_modes.sh`, `extension/check.py`.
 
 ---
 

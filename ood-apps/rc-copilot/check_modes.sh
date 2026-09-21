@@ -8,10 +8,10 @@
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 fail=0
-for f in ood-app/template/*.erb ood-app-capture/template/*.erb; do
+for f in rc-copilot/template/*.erb capture-test/template/*.erb; do
   m=$(stat -c '%a' "$f")
   if [ "$m" = "755" ]; then printf '  OK    %s (%s)\n' "$f" "$m"
   else printf '  FIX   %s is %s, must be 755\n' "$f" "$m"; fail=1; fi
 done
-[ "$fail" = 1 ] && { echo; echo "Run: chmod 755 ood-app/template/*.erb ood-app-capture/template/*.erb"; exit 1; }
+[ "$fail" = 1 ] && { echo; echo "Run: chmod 755 rc-copilot/template/*.erb capture-test/template/*.erb"; exit 1; }
 echo; echo "All template scripts executable."

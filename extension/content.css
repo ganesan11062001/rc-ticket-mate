@@ -2,10 +2,10 @@
    someone else's document and their CSS is broad. `all: initial` on the roots
    stops ServiceNow's resets leaking in. */
 
-/* Tokens must be declared on BOTH roots: the rail is a sibling of the panel,
-   not a descendant, so it cannot inherit them. Naming a stale id here silently
-   breaks every var() on that element. */
-#rc-copilot-rail,
+/* Tokens must be declared on BOTH roots: the button is a sibling of the panel,
+   not a descendant, so it cannot inherit them. Naming a stale id here breaks
+   every var() on that element silently -- check.py guards against it. */
+#rc-copilot-fab,
 #rc-copilot-panel {
   --rc-accent: #c8102e;
   --rc-accent-600: #a80d26;
@@ -31,56 +31,58 @@
 }
 
 /* ==================================================================
-   Docked right rail. Collapsed it is a slim tab on the edge; open it
-   is a full-height panel holding the entire workflow.
+   A "Draft reply" button bottom-right; clicking it slides in a
+   full-height right-hand panel holding the entire workflow.
    ================================================================== */
 
-/* ---------- collapsed tab ---------- */
+/* ---------- the entry point: a labelled pill ---------- */
 
-button#rc-copilot-rail.rc-rail {
+button#rc-copilot-fab.rc-fab {
   all: initial;
   position: fixed;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 22px;
+  bottom: 22px;
   z-index: 2147483646;
 
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
   align-items: center;
   gap: 9px;
-  padding: 14px 7px 16px;
+  padding: 12px 20px 12px 16px;
 
-  background: linear-gradient(160deg, var(--rc-accent), var(--rc-accent-700));
-  color: #fff;
-  border-radius: 12px 0 0 12px;
+  border-radius: 999px;
+  background: linear-gradient(145deg, var(--rc-accent), var(--rc-accent-700));
+  color: #ffffff;
+  font: 600 14px/1 var(--rc-sans);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
   cursor: pointer;
-  box-shadow: -3px 0 16px rgba(200, 16, 46, .28);
-  transition: padding-right .16s ease, box-shadow .16s ease;
+  box-shadow: 0 8px 24px rgba(200, 16, 46, .38), 0 2px 6px rgba(0, 0, 0, .16);
+  transition: transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s ease, filter .16s ease;
 }
-button#rc-copilot-rail.rc-rail:hover {
-  padding-right: 11px;
-  box-shadow: -4px 0 22px rgba(200, 16, 46, .4);
-}
-button#rc-copilot-rail.rc-rail[data-hidden="1"] { display: none; }
 
-button#rc-copilot-rail .rc-rail-mark {
-  width: 16px; height: 14px; position: relative; flex: none;
+button#rc-copilot-fab.rc-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(200, 16, 46, .46), 0 3px 8px rgba(0, 0, 0, .18);
+  filter: brightness(1.06);
 }
-button#rc-copilot-rail .rc-rail-mark::before,
-button#rc-copilot-rail .rc-rail-mark::after {
+button#rc-copilot-fab.rc-fab:active { transform: translateY(0); }
+button#rc-copilot-fab.rc-fab:focus-visible {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--rc-accent);
+}
+button#rc-copilot-fab.rc-fab[data-hidden="1"] { display: none; }
+
+/* three white bars, drawn in CSS so there is no asset to load */
+button#rc-copilot-fab .rc-fab-ico { position: relative; width: 16px; height: 14px; flex: none; }
+button#rc-copilot-fab .rc-fab-ico::before,
+button#rc-copilot-fab .rc-fab-ico::after {
   content: ""; position: absolute; left: 0;
   height: 2.5px; border-radius: 2px; background: #fff;
 }
-button#rc-copilot-rail .rc-rail-mark::before { top: 2px; width: 16px; }
-button#rc-copilot-rail .rc-rail-mark::after  { top: 8px; width: 10px; }
+button#rc-copilot-fab .rc-fab-ico::before { top: 2px; width: 16px; }
+button#rc-copilot-fab .rc-fab-ico::after  { top: 8px; width: 10px; }
 
-button#rc-copilot-rail .rc-rail-text {
-  writing-mode: vertical-rl;
-  font: 600 12px/1 var(--rc-sans);
-  letter-spacing: .04em;
-}
+button#rc-copilot-fab .rc-fab-label { font: inherit; color: inherit; }
 
 /* ---------- panel ---------- */
 

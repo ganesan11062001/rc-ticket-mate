@@ -47,7 +47,7 @@ else
   echo "    Closest matches:"
   sinfo -h -o '%f' -p "$GPU_PARTS" 2>/dev/null | tr ',' '\n' \
     | grep -i 'a100\|80' | sort -u | sed 's/^/      /'
-  echo "    -> put the right string in ood-app/submit.yml.erb (constraint = ...)"
+  echo "    -> put the right string in ood-apps/rc-copilot/submit.yml.erb (constraint = ...)"
 fi
 
 echo

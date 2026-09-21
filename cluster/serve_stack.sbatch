@@ -80,14 +80,14 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ── vLLM ──────────────────────────────────────────────────────────────────────
-source "$TM_ROOT/env.sh"
+source "$TM_ROOT/cluster/env.sh"
 
 echo "=== node: $NODE | job: $SLURM_JOB_ID ==="
 nvidia-smi --query-gpu=index,name,memory.total,driver_version --format=csv
 
 echo "=== starting vLLM (loopback only, port $VLLM_PORT) ==="
 MODEL="$MODEL" PORT="$VLLM_PORT" VLLM_HOST=127.0.0.1 \
-  "$TM_ROOT/serve_glm.sh" > "logs/vllm-${SLURM_JOB_ID}.out" 2>&1 &
+  "$TM_ROOT/cluster/serve_glm.sh" > "logs/vllm-${SLURM_JOB_ID}.out" 2>&1 &
 VLLM_PID=$!
 
 # Weight loading takes minutes. Poll rather than guessing a sleep.
@@ -120,7 +120,7 @@ SERVED_MODEL="$(curl -sf --noproxy '*' "http://127.0.0.1:${VLLM_PORT}/v1/models"
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
 
 # ── rc-copilot ────────────────────────────────────────────────────────────────
-cd "$TM_ROOT/rc-copilot" || exit 1
+cd "$TM_ROOT/backend" || exit 1
 
 export VLLM_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
 export VLLM_MODEL_NAME="$SERVED_MODEL"
@@ -130,7 +130,7 @@ export LOG_FILE=""          # stdout only; nothing extra on /projects
 export USE_PROXY_ENV=false
 
 echo "=== starting rc-copilot on 0.0.0.0:${APP_PORT} ==="
-"$TM_ROOT/rc-copilot/.venv/bin/python" -m uvicorn backend.main:app \
+"$TM_ROOT/backend/.venv/bin/python" -m uvicorn app.main:app \
   --host 0.0.0.0 --port "$APP_PORT" &
 APP_PID=$!
 

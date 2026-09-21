@@ -8,8 +8,8 @@
 set -uo pipefail
 
 TM_ROOT="${TM_ROOT:-/projects/rc/projects/ticket_mate}"
-APP_DIR="$TM_ROOT/servicenow-ood-extension/cluster"
-PYTHON="$TM_ROOT/rc-copilot/.venv/bin/python"
+APP_DIR="$TM_ROOT/cluster"
+PYTHON="$TM_ROOT/backend/.venv/bin/python"
 
 export CAPTURE_DIR="${CAPTURE_DIR:-/scratch/$USER/rc_copilot_captures}"
 export AUTH_TOKEN="$password"                      # from before.sh, OOD-generated

@@ -45,7 +45,7 @@ export AUTH_TOKEN="$TOKEN"
 export SESSION_HOURS="${SESSION_HOURS:-4}"
 export LOG_FILE=""
 
-PYTHON="$TM_ROOT/rc-copilot/.venv/bin/python"
+PYTHON="$TM_ROOT/backend/.venv/bin/python"
 [ -x "$PYTHON" ] || { echo "ERROR: no venv at $PYTHON"; exit 1; }
 
 cat <<BANNER
