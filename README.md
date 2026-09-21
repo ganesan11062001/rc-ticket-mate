@@ -33,20 +33,8 @@ and the **model runs in the user's own Slurm allocation**.
 
 ## How it works
 
-```
-ServiceNow tab            Chrome extension              Explorer HPC
-┌──────────────┐         ┌────────────────┐         ┌──────────────────┐
-│ ticket form  │  reads  │  content.js    │         │  Open OnDemand   │
-│              ├────────►│                │  https  │  (SSO + proxy)   │
-│ short desc   │         │  background.js ├────────►│        │         │
-│ description  │         │   session      │         │        ▼         │
-│              │         └────────────────┘         │  ┌────────────┐  │
-│ work notes   │◄────────────────┘                  │  │ rc-copilot │  │
-│   ▲ draft    │      structured JSON               │  │     ▼      │  │
-└──────────────┘                                    │  │ vLLM + GLM │  │
-                                                    │  └────────────┘  │
-                                                    └──────────────────┘
-```
+![RC Copilot system architecture](docs/rc-architecture.png)
+
 
 1. You open a ticket and click **Draft reply**.
 2. The extension reads the ticket and offers a box for anything the model should

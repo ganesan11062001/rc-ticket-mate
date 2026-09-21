@@ -28,6 +28,10 @@ and the *model* runs inside the user's own Slurm allocation.
 
 ## 2. How it works, end to end
 
+![RC Copilot system architecture](docs/rc-architecture.png)
+
+The same path, with the network boundary drawn explicitly:
+
 ```
    NORTHEASTERN NETWORK
    ┌──────────────────────────────────────────────────────────────────────────┐
@@ -106,7 +110,7 @@ API surface — four endpoints:
 | --- | --- | --- |
 | `GET /api/health` | none | Liveness + whether vLLM is reachable |
 | `POST /api/login` | access token | Exchange token for a session |
-| `POST /api/draft` | session | `{ticket_text, ticket_number?}` → draft |
+| `POST /api/draft` | session | `{ticket_text, ticket_number?, extra_instructions?}` → draft |
 | `GET /api/captures` | session | *(capture-test build only)* what's stored |
 
 `/api/health` is deliberately unauthenticated so the extension can distinguish
