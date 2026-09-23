@@ -245,15 +245,17 @@ async def health():
 
     if not reachable:
         logger.warning("health check failed | %s", detail)
-        return JSONResponse(
-            status_code=503,
-            content=HealthResponse(
-                status="unreachable",
-                auth_required=not settings.auth_disabled,
-                vllm_base_url=settings.vllm_base_url,
-                configured_model=settings.vllm_model_name,
-                detail=detail,
-            ).model_dump(),
+        # Deliberately 200, not 503. This endpoint reports health; it is not
+        # itself failing. A 503 here is indistinguishable from OOD's own 503
+        # ("nothing is listening on that port"), so the extension would tell
+        # the user the job was dead while the backend was answering fine and
+        # simply waiting for the model to load. The body carries the status.
+        return HealthResponse(
+            status="unreachable",
+            auth_required=not settings.auth_disabled,
+            vllm_base_url=settings.vllm_base_url,
+            configured_model=settings.vllm_model_name,
+            detail=detail,
         )
 
     model_available = settings.vllm_model_name in model_ids if model_ids else None

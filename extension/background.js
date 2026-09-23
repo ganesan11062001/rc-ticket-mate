@@ -84,8 +84,9 @@ function describeHttpFailure(status, bodyText) {
   }
   if (status === 502 || status === 503 || status === 504) {
     return (
-      "OOD reached the node but nothing is listening there (" + status + "). " +
-      "Check the job is still running and rc-copilot bound 0.0.0.0."
+      "OOD reached the node but got no answer from the app (" + status + "). " +
+      "Either the job has ended, or it is still starting up -- a model can " +
+      "take a few minutes to load. Check the session in Open OnDemand."
     );
   }
   if (status === 401 || status === 403) {
@@ -160,6 +161,18 @@ async function request(path, options) {
   const text = await response.text().catch(() => "");
 
   if (!response.ok) {
+    /* An older backend answered /api/health with 503 when the model was not
+       loaded yet. That is indistinguishable from OOD's own 503 ("nothing is
+       listening"), and reporting a dead job while the backend is answering is
+       badly misleading. If the body is our JSON, trust it over the status. */
+    try {
+      const body = JSON.parse(text);
+      if (body && typeof body.status === "string" && "vllm_base_url" in body) {
+        return { ok: true, status: response.status, data: body };
+      }
+    } catch (err) {
+      /* not our JSON -- fall through to the generic message */
+    }
     return {
       ok: false,
       status: response.status,
