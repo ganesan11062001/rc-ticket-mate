@@ -161,7 +161,9 @@ def _is_unsupported_param_error(exc: openai.APIStatusError) -> bool:
 
 
 async def generate_draft(ticket_text: str,
-                         extra_instructions: str = "") -> Tuple[LLMDraft, str]:
+                         extra_instructions: str = "",
+                         trace: Optional[Dict[str, Any]] = None
+                         ) -> Tuple[LLMDraft, str]:
     """Send one ticket to the model and return (validated draft, model name).
 
     Raises LLMError with a UI-friendly message on any failure.
@@ -234,12 +236,21 @@ async def generate_draft(ticket_text: str,
                 # isn't really being applied — drop to the next strategy.
                 if strategy != "none":
                     continue
+                if trace is not None:
+                    trace["messages"] = messages
+                    trace["raw_response"] = raw
+                    trace["strategy"] = strategy
                 raise LLMError(
                     "The model did not return valid JSON in the expected format.",
                     _truncate(last_parse_error),
                 )
 
             _working_strategy = strategy
+            if trace is not None:
+                # Enough to reproduce and argue with this draft later.
+                trace["messages"] = messages
+                trace["raw_response"] = raw
+                trace["strategy"] = strategy
             return draft, completion.model or settings.vllm_model_name
 
         # Every strategy was rejected as unsupported.

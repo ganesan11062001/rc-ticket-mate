@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth
+from . import auth, runlog
 from .config import get_settings
 from .llm_client import LLMError, check_health, generate_draft
 from .models import (
@@ -164,9 +164,13 @@ async def draft(request: DraftRequest):
     if settings.debug:
         logger.debug("draft request | id=%s ticket_text=%r", request_id, request.ticket_text)
 
+    # Collects the exact prompt, the raw model output and which structured
+    # output strategy worked, so this draft can be explained afterwards.
+    trace: dict = {}
+
     try:
         llm_draft, model_name = await generate_draft(
-            request.ticket_text, request.extra_instructions
+            request.ticket_text, request.extra_instructions, trace
         )
     except LLMError as exc:
         elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -177,6 +181,20 @@ async def draft(request: DraftRequest):
             elapsed_ms,
             exc.message,
             exc.detail,
+        )
+        # Record failures too: a draft that never arrived is worth explaining.
+        runlog.record(
+            request_id=request_id,
+            ticket_number=request.ticket_number,
+            ticket_text=request.ticket_text,
+            extra_instructions=request.extra_instructions,
+            messages=trace.get("messages", []),
+            raw_response=trace.get("raw_response", ""),
+            strategy=trace.get("strategy", "n/a"),
+            draft=None,
+            error=exc.message,
+            model=settings.vllm_model_name,
+            latency_ms=elapsed_ms,
         )
         return JSONResponse(
             status_code=502,
@@ -198,6 +216,22 @@ async def draft(request: DraftRequest):
         elapsed_ms,
         model_name,
     )
+    saved = runlog.record(
+        request_id=request_id,
+        ticket_number=request.ticket_number,
+        ticket_text=request.ticket_text,
+        extra_instructions=request.extra_instructions,
+        messages=trace.get("messages", []),
+        raw_response=trace.get("raw_response", ""),
+        strategy=trace.get("strategy", "unknown"),
+        draft=response.model_dump(),
+        error=None,
+        model=model_name,
+        latency_ms=elapsed_ms,
+    )
+    if saved:
+        logger.info("run recorded | id=%s -> %s", request_id, saved)
+
     if settings.debug:
         logger.debug("draft response | id=%s %s", request_id, response.model_dump())
 

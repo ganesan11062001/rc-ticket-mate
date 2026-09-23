@@ -39,6 +39,18 @@ case "$MODEL" in
   air)   TP=4; MAX_LEN=131072 ;;
 esac
 
+# The backend is started before vLLM, so it needs the served model name up
+# front. serve_glm.sh derives the same value from MODEL.
+case "$MODEL" in
+  flash)  SERVED_NAME_HINT="glm-4.7-flash" ;;
+  air)    SERVED_NAME_HINT="glm-4.5-air" ;;
+  qwen7b) SERVED_NAME_HINT="qwen2.5-7b-instruct" ;;
+  qwen14b) SERVED_NAME_HINT="qwen2.5-14b-instruct" ;;
+  t4-7b)  SERVED_NAME_HINT="qwen2.5-7b-instruct-awq" ;;
+  t4-14b) SERVED_NAME_HINT="qwen2.5-14b-instruct-awq" ;;
+  *)      SERVED_NAME_HINT="qwen2.5-3b-instruct" ;;
+esac
+
 export TP MAX_LEN
 echo "=== layout=${GPU_LAYOUT} -> TP=${TP}, max_model_len=${MAX_LEN} ==="
 
@@ -48,12 +60,46 @@ nvidia-smi --query-gpu=index,name,memory.total,driver_version --format=csv
 source "$TM_ROOT/cluster/env.sh"
 
 VLLM_PID=""
+APP_PID=""
 cleanup() {
   echo "shutting down..."
-  [ -n "$VLLM_PID" ] && kill "$VLLM_PID" 2>/dev/null
+  [ -n "${APP_PID:-}" ]  && kill "$APP_PID"  2>/dev/null
+  [ -n "${VLLM_PID:-}" ] && kill "$VLLM_PID" 2>/dev/null
   wait 2>/dev/null
 }
 trap cleanup EXIT INT TERM
+
+# ── rc-copilot FIRST ──────────────────────────────────────────────────────────
+# Order matters. OOD publishes the port and shows the session card the moment
+# this script starts, and the browser extension configures itself from that
+# card. If the backend only started after the model finished loading, there
+# would be several minutes where OOD says "Running", the extension has saved
+# the address, and every request 502s -- which reads as "the extension cannot
+# connect" rather than "the model is still loading".
+#
+# So the backend comes up immediately. Its /api/health reports vLLM as
+# unreachable until the weights are in, which the extension already surfaces as
+# "rc-copilot is up, but it can't reach vLLM".
+cd "$TM_ROOT/backend" || exit 1
+
+export VLLM_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
+export VLLM_MODEL_NAME="$SERVED_NAME_HINT"
+export AUTH_TOKEN="$password"     # from before.sh; OOD generated it
+# Match the sign-in lifetime to the allocation, so the UI never claims more
+# time than the job actually has left.
+export SESSION_HOURS="<%= context.bc_num_hours %>"
+export LOG_FILE=""                # stdout only -- nothing extra on /projects
+export USE_PROXY_ENV=false
+export RUN_LOG_DIR="${RUN_LOG_DIR:-/scratch/$USER/rc_copilot_runs}"
+
+echo "=== starting rc-copilot on 0.0.0.0:${port} (before the model) ==="
+"$TM_ROOT/backend/.venv/bin/python" -m uvicorn app.main:app \
+  --host 0.0.0.0 --port "${port}" &
+APP_PID=$!
+
+sleep 3
+kill -0 "$APP_PID" 2>/dev/null || { echo "ERROR: rc-copilot failed to start."; exit 1; }
+echo "=== rc-copilot is listening; the extension can connect now ==="
 
 # ── vLLM, loopback only ───────────────────────────────────────────────────────
 echo "=== starting vLLM on 127.0.0.1:${VLLM_PORT} (model=${MODEL}) ==="
@@ -61,12 +107,14 @@ MODEL="$MODEL" PORT="$VLLM_PORT" VLLM_HOST=127.0.0.1 TP="$TP" MAX_LEN="$MAX_LEN"
   "$TM_ROOT/cluster/serve_glm.sh" > "vllm.log" 2>&1 &
 VLLM_PID=$!
 
-echo -n "waiting for weights to load"
+echo -n "loading weights (the UI will say the model is unreachable until this finishes)"
 READY=0
-for _ in $(seq 1 120); do   # up to ~20 min
+for _ in $(seq 1 180); do   # up to ~30 min: a first-time AWQ download is slow
   if ! kill -0 "$VLLM_PID" 2>/dev/null; then
     echo; echo "ERROR: vLLM exited early. Tail of vllm.log:"; tail -40 vllm.log
-    exit 1
+    echo "NOTE: rc-copilot is still up, so /api/health will report the model"
+    echo "      as unreachable rather than the session simply vanishing."
+    break
   fi
   if curl -sf --noproxy '*' --max-time 3 \
        "http://127.0.0.1:${VLLM_PORT}/v1/models" -o /dev/null; then
@@ -75,24 +123,26 @@ for _ in $(seq 1 120); do   # up to ~20 min
   echo -n "."
   sleep 10
 done
-[ "$READY" = 1 ] || { echo; echo "ERROR: vLLM never became ready. See vllm.log"; exit 1; }
 
-SERVED_MODEL="$(curl -sf --noproxy '*' "http://127.0.0.1:${VLLM_PORT}/v1/models" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
-echo "=== vLLM serving ${SERVED_MODEL} ==="
+if [ "$READY" = 1 ]; then
+  SERVED_MODEL="$(curl -sf --noproxy '*' "http://127.0.0.1:${VLLM_PORT}/v1/models" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
+  echo "=== vLLM serving ${SERVED_MODEL} ==="
+  if [ "$SERVED_MODEL" != "$SERVED_NAME_HINT" ]; then
+    # The backend was started with a guess at the served name. If vLLM ended up
+    # advertising something else, restart the backend with the real one rather
+    # than leaving /api/health reporting a model mismatch.
+    echo "=== served name differs from the hint; restarting rc-copilot ==="
+    kill "$APP_PID" 2>/dev/null; wait "$APP_PID" 2>/dev/null
+    export VLLM_MODEL_NAME="$SERVED_MODEL"
+    "$TM_ROOT/backend/.venv/bin/python" -m uvicorn app.main:app \
+      --host 0.0.0.0 --port "${port}" &
+    APP_PID=$!
+  fi
+else
+  echo; echo "WARNING: vLLM never became ready. rc-copilot stays up so the"
+  echo "         session and its logs remain reachable."
+fi
 
-# ── rc-copilot ────────────────────────────────────────────────────────────────
-cd "$TM_ROOT/backend" || exit 1
-
-export VLLM_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
-export VLLM_MODEL_NAME="$SERVED_MODEL"
-export AUTH_TOKEN="$password"     # from before.sh; OOD generated it
-# Match the sign-in lifetime to the allocation, so the UI never claims more
-# time than the job actually has left.
-export SESSION_HOURS="<%= context.bc_num_hours %>"
-export LOG_FILE=""                # stdout only — nothing extra on /projects
-export USE_PROXY_ENV=false
-
-echo "=== starting rc-copilot on 0.0.0.0:${port} ==="
-exec "$TM_ROOT/backend/.venv/bin/python" -m uvicorn app.main:app \
-  --host 0.0.0.0 --port "${port}"
+echo "=== runs are recorded under ${RUN_LOG_DIR} ==="
+wait "$APP_PID"
