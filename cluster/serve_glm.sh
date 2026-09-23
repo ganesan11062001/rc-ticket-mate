@@ -34,6 +34,26 @@ case "$MODEL" in
     DEFAULT_TP=4
     MAX_LEN="${MAX_LEN:-131072}"
     ;;
+  qwen7b)
+    # SINGLE-GPU production option. 15.2 GB bf16, 32K context, GQA with only 4
+    # KV heads (~56 KB/token), so KV cache is cheap. Fits one A100-40GB with
+    # ~20 GB left for KV -- no tensor parallelism, no NCCL, shorter queue than
+    # the 2x80GB that GLM-4.7-Flash needs.
+    MODEL_ID="Qwen/Qwen2.5-7B-Instruct"
+    SERVED_NAME="qwen2.5-7b-instruct"
+    DEFAULT_TP=1
+    MAX_LEN="${MAX_LEN:-32768}"
+    GLM_PARSERS=0
+    ;;
+  qwen14b)
+    # Single-GPU, but needs the 80GB A100 (29.6 GB weights, ~42 GB KV left).
+    # Stronger than 7B; use --constraint=a100@80g or it may land on a 40GB card.
+    MODEL_ID="Qwen/Qwen2.5-14B-Instruct"
+    SERVED_NAME="qwen2.5-14b-instruct"
+    DEFAULT_TP=1
+    MAX_LEN="${MAX_LEN:-32768}"
+    GLM_PARSERS=0
+    ;;
   small)
     # Not for production drafting -- this exists so the end-to-end pipeline and
     # the prompt can be exercised without queueing for an A100. ~6 GB in bf16,
@@ -45,7 +65,8 @@ case "$MODEL" in
     GLM_PARSERS=0
     ;;
   *)
-    echo "error: MODEL must be 'flash', 'air' or 'small' (got '$MODEL')" >&2
+    echo "error: MODEL must be 'flash', 'air', 'qwen7b', 'qwen14b' or 'small'" \
+         "(got '$MODEL')" >&2
     exit 1
     ;;
 esac
@@ -64,9 +85,16 @@ echo "Serving $MODEL_ID  (TP=$TP, max_model_len=$MAX_LEN, port=$PORT)"
 # ── dtype: decided by the GPU, not the model ─────────────────────────────────
 # Explorer has T4 (sm75) and V100 (sm70) alongside A100 (sm80) and H200 (sm90).
 # bfloat16 needs sm80+. Most model configs (Qwen2.5 included) ask for bfloat16,
-# so on a V100 or T4 vLLM aborts at startup with:
+# so on a T4 vLLM aborts at startup with:
 #   "Bfloat16 is only supported on GPUs with compute capability of at least 8.0"
 # Those older cards are usually the idle ones, so detect and fall back to fp16.
+#
+# V100 IS A DEAD END -- do not request one. The fallback below cannot rescue it.
+# torch 2.13.0+cu129 ships kernels for sm_75/80/86/90/100/120 only; sm_70 was
+# dropped upstream. A V100 fails with "no kernel image is available for
+# execution on the device" before dtype is ever consulted. Serving on V100 would
+# need a separate legacy venv (torch <=2.6 cu124 + vLLM 0.6.x, fp16, xformers),
+# which predates GLM-4.5/4.7 support entirely. T4 (sm75) does work via fp16.
 if [ -z "${DTYPE:-}" ]; then
   # `|| true` matters: this script runs under `set -euo pipefail`, so without it
   # a missing or unhappy nvidia-smi kills the server here with no message at all.

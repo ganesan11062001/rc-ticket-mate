@@ -7,9 +7,9 @@ One click on a ticket reads it, sends it to a model running in your Slurm job,
 and writes a draft into the work notes for you to review. No ticket data leaves
 the university, and no ServiceNow API access is needed.
 
-> **Status:** working prototype. The data path is proven end to end with real
-> tickets. The model has not yet generated a draft — see
-> [Status](#status) before assuming it is finished.
+> **Status:** working prototype, end to end. A real model has produced a
+> schema-valid draft on the cluster. Draft *quality* is now the open problem —
+> see [Status](#status).
 
 ---
 
@@ -127,14 +127,22 @@ Update can't send unreviewed model output to a researcher.
 - Auth against tampered signatures and forged expiries
 - The OOD proxy path, field matching across all three UIs, partition/GPU limits
 
-**Not yet proven**
+- **Real inference on the cluster.** Qwen2.5-3B on a T4 (`d1025`) produced a
+  schema-valid draft from the real prompt in 13.9s — summary, 5 steps,
+  confidence 0.80, 4 caveats, a 729-character reply
 
-- **The model has never produced a draft.** Every backend test used a stub
-  returning canned JSON, so prompt quality — the actual point — is unvalidated
-- The GLM stack hasn't completed a run on a GPU node
+**Not yet good enough**
 
-**Next step:** one real inference, then 20–30 tickets through the local UI to
-tune the prompt. Everything built so far is plumbing around that untested core.
+- **Draft quality.** The first real run exposed three prompt defects: the model
+  copied caveats verbatim from the prompt's example list (3 of 4 were
+  contradicted by the ticket), signed off `[Your Name]`, and gave generic
+  "check your versions" advice where the error text already named the fault.
+  All three are now addressed in `prompts.py` and need re-testing
+- The GLM stack hasn't completed a run on a GPU node — only the 3B model has
+
+**Next step:** re-run `tests/` with the revised prompt, then work through 20–30
+real tickets, tuning [`app/prompts.py`](backend/app/prompts.py) until the drafts
+are worth sending.
 
 ---
 

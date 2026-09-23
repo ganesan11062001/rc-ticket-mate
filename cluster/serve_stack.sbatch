@@ -19,11 +19,28 @@
 #   sbatch serve_stack.sbatch
 #   tail -f logs/rc-copilot-<jobid>.out
 #
-# For the real model (one A100 80GB; note every general-access GPU partition
-# allows only 1 GPU per job):
+# Every general-access GPU partition allows only 1 GPU per job, so everything
+# below is single-GPU. Pick by which A100 you can get:
 #
-#   sbatch --gres=gpu:a100:1 --constraint=a100@80g --mem=120G \
-#          --cpus-per-task=16 --export=ALL,MODEL=flash serve_stack.sbatch
+#   RECOMMENDED -- Qwen2.5-7B on one A100 40GB (15.2 GB weights, ~20 GB KV,
+#   full 32K context). Smallest allocation that is still a real model:
+#
+#     sbatch --gres=gpu:a100:1 --mem=80G --cpus-per-task=12 \
+#            --export=ALL,MODEL=qwen7b serve_stack.sbatch
+#
+#   Stronger, needs the 80GB card (29.6 GB weights, ~42 GB KV):
+#
+#     sbatch --gres=gpu:a100:1 --constraint=a100@80g --mem=120G \
+#            --cpus-per-task=16 --export=ALL,MODEL=qwen14b serve_stack.sbatch
+#
+#   GLM-4.7-Flash on ONE 80GB card. 59 GB of weights leaves only ~9 GB for KV,
+#   so the context must come down from 131072 or the engine will not start:
+#
+#     sbatch --gres=gpu:a100:1 --constraint=a100@80g --mem=120G \
+#            --cpus-per-task=16 --export=ALL,MODEL=flash,MAX_LEN=32768 \
+#            serve_stack.sbatch
+#
+# Do NOT request V100 -- torch 2.13+cu129 has no sm_70 kernels. See serve_glm.sh.
 #
 # rc-copilot listens on 0.0.0.0 because the OOD web node has to reach it across
 # the network — which also means every other user on the cluster can reach the

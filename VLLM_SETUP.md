@@ -73,16 +73,46 @@ or 8×H100 for the W4A8 variant.
 
 ## What fits instead
 
-Both are BF16, so they need no FP8 hardware and run natively on sm80:
+Every general-access GPU partition on Explorer allows **1 GPU per job**, so the
+practical choices are the single-GPU ones. All are BF16 — no FP8 hardware
+needed, native on sm80.
 
-| Model | Params | Weights | GPUs (A100-80GB) | Context |
-|---|---|---|---|---|
-| `zai-org/GLM-4.7-Flash` | ~30B MoE (64 experts, 4 active) | 62.5 GB | 2 | 198K |
-| `zai-org/GLM-4.5-Air` | 106B total / 12B active | 221 GB | 4 | 131K |
+| `MODEL=` | Model | Weights | GPUs | Card | Context | On disk |
+|---|---|---|---|---|---|---|
+| `qwen7b` | Qwen2.5-7B-Instruct | 15.2 GB | **1** | A100-40GB | 32K | ✅ |
+| `qwen14b` | Qwen2.5-14B-Instruct | 29.6 GB | **1** | A100-80GB | 32K | ✗ |
+| `small` | Qwen2.5-3B-Instruct | 6 GB | **1** | any sm75+ | 16K | ✅ |
+| `flash` | GLM-4.7-Flash | 59 GB | 1 | A100-80GB | ≤32K † | ✅ |
+| `flash` | GLM-4.7-Flash | 59 GB | 2 | A100-80GB | 131K | ✅ |
+| `air` | GLM-4.5-Air | 221 GB | 4 | A100-80GB | 131K | ✗ |
 
-GLM-4.7-Flash is the default: newest GLM generation that fits comfortably, same
-`glm47` tool-call parser and `glm45` reasoning parser as GLM-5.3, so client code
-written against it ports to GLM-5.3 unchanged if you later get Hopper access.
+† On a single 80GB card, 59 GB of weights leaves only ~9 GB for KV. Pass
+`MAX_LEN=32768` or the engine fails to allocate a usable KV cache. The 2-GPU
+TP=2 run is the verified one (41.2 GiB KV, 817K tokens, 6.24x concurrency).
+
+**Recommended single-GPU default: `qwen7b`.** It is the smallest allocation that
+is still a real model, needs only a 40GB A100 (a much shorter queue than 80GB),
+and runs TP=1 so there is no NCCL setup to go wrong.
+
+GLM-4.7-Flash remains the strongest option if you can get 2 GPUs — it is a ~30B
+MoE, and it uses the same `glm47` tool-call and `glm45` reasoning parsers as
+GLM-5.3, so client code ports to GLM-5.3 unchanged given Hopper access later.
+
+## V100 is not usable
+
+Do not request V100 nodes, however idle they look.
+
+`torch 2.13.0+cu129` ships kernels for `sm_75, sm_80, sm_86, sm_90, sm_100,
+sm_120`. V100 is **sm_70**, which upstream PyTorch dropped; a V100 job dies with
+`no kernel image is available for execution on the device` before dtype or
+memory is ever considered. Volta also has no bfloat16 and no FlashAttention.
+
+Supporting it would mean a second legacy venv — torch ≤2.6 on cu124 plus vLLM
+0.6.x, fp16, xformers backend — and vLLM 0.6.x predates GLM-4.5/4.7 support
+entirely. Not worth maintaining.
+
+**T4 (sm75) does work**, via the automatic fp16 fallback in `serve_glm.sh`, but
+only has 16 GB — enough for `small`, not for `qwen7b`.
 
 ## Environment notes
 

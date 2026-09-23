@@ -1,8 +1,8 @@
 # RC Copilot — Architecture & Developer Guide
 
-**Status:** working prototype. The data path is proven end to end with real
-ticket data; the language model has not yet generated a draft. See
-[Current status](#8-current-status) for the precise line between the two.
+**Status:** working prototype, end to end. A real model has produced a
+schema-valid draft on the cluster; draft quality is the open problem. See
+[Current status](#8-current-status).
 
 ---
 
