@@ -17,9 +17,26 @@ and writes only into `tests/logs/`. Nothing outside `tests/` is modified.
 ```bash
 ssh you@login.explorer.northeastern.edu
 cd /projects/rc/projects/ticket_mate/tests
-sbatch run_inference_test.sbatch
-tail -f logs/inftest-<jobid>.out
+sbatch --gres=gpu:t4:1 --export=ALL,MODEL=small run_inference_test.sbatch
+tail -F logs/inftest-<jobid>.out
 ```
+
+**Name the GPU type.** A bare `--gres=gpu:1` can land on a V100, and most of
+this cluster's GPUs are V100s. torch 2.13+cu129 ships sm_75 and above with no
+PTX fallback, so there is no code that can run on a V100 (sm_70) at all -- it is
+an architecture problem, not a dtype one. The job checks compute capability
+first and refuses in seconds with that explanation.
+
+Usable hardware:
+
+| `--gres` | GPU | VRAM | Good for |
+| --- | --- | --- | --- |
+| `gpu:t4:1` | T4, sm_75 | 16 GB | Qwen2.5-3B. One node (`d1025`), usually idle |
+| `gpu:a100:1` | A100, sm_80 | 40 GB | up to Qwen2.5-7B |
+| `gpu:a100:1 --constraint=a100@80g` | A100 | 80 GB | GLM-4.7-Flash |
+| — | V100, sm_70 | — | **never** |
+
+`tail -F` rather than `-f`: the output file does not exist until the job starts.
 
 Defaults to **Qwen2.5-3B on any free GPU**, so it schedules in seconds rather
 than queueing for an A100. The job starts vLLM on loopback, waits for the

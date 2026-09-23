@@ -15,13 +15,25 @@
 #   sbatch run_inference_test.sbatch
 #   tail -f logs/inftest-<jobid>.out
 #
-# Defaults to the 3B test model on ANY free GPU, so it schedules in seconds
-# (note: its weights are not cached yet, so the first run downloads ~6 GB).
-# GLM-4.7-Flash is already fully cached, so MODEL=flash downloads nothing.
-# For the real model (one A100 80GB; general-access partitions cap at 1 GPU):
+# Defaults to the 3B test model on ANY free GPU, so it schedules in seconds.
+# Qwen2.5-3B, Qwen2.5-7B and GLM-4.7-Flash are all cached on /projects, so none
+# of the commands below download anything.
 #
-#   sbatch --gres=gpu:a100:1 --constraint=a100@80g --mem=120G \
-#          --cpus-per-task=16 --export=ALL,MODEL=flash run_inference_test.sbatch
+# General-access partitions cap GRES at one GPU per job, so prefer these:
+#
+#   Qwen2.5-7B on one A100 40GB -- recommended single-GPU check:
+#
+#     sbatch --gres=gpu:a100:1 --mem=80G --cpus-per-task=12 \
+#            --export=ALL,MODEL=qwen7b run_inference_test.sbatch
+#
+#   GLM-4.7-Flash on one A100 80GB (TP and MAX_LEN are set automatically from
+#   the allocation; 59 GB of weights leaves ~12 GB for KV, so context drops to
+#   32k):
+#
+#     sbatch --gres=gpu:a100:1 --constraint=a100@80g --mem=120G \
+#            --cpus-per-task=16 --export=ALL,MODEL=flash run_inference_test.sbatch
+#
+# Do not request V100 -- torch 2.13+cu129 has no sm_70 kernels.
 #
 # To judge quality on a real ticket, drop it in a file and point at it:
 #
@@ -73,6 +85,29 @@ echo "=== allocation: ${GPU_COUNT} GPU(s), ${GPU_MIB} MiB each (${TOTAL_MIB} MiB
 
 export TP="${TP:-$GPU_COUNT}"
 
+# Architecture first: torch 2.13+cu129 ships sm_75/80/86/90/100/120 and no PTX,
+# so a V100 (sm_70) has no compiled code at all -- not a dtype problem, and the
+# float16 fallback in serve_glm.sh cannot help. Fail in seconds with a clear
+# reason rather than an opaque CUDA error several minutes in.
+CC="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 | tr -d ' ' || true)"
+CC_MAJOR="${CC%%.*}"
+CC_MINOR="${CC##*.}"
+if [ -n "$CC" ] && { [ "${CC_MAJOR:-9}" -lt 7 ] 2>/dev/null || \
+     { [ "${CC_MAJOR:-9}" = "7" ] && [ "${CC_MINOR:-5}" -lt 5 ] 2>/dev/null; }; }; then
+  GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
+  echo
+  echo "ERROR: this is a ${GPU_NAME} (compute capability ${CC})."
+  echo "       torch $(python -c 'import torch; print(torch.__version__)' 2>/dev/null) is compiled for sm_75 and above"
+  echo "       with no PTX fallback, so there is no code that can run here."
+  echo
+  echo "       Pick hardware that works:"
+  echo "         --gres=gpu:t4:1                        (sm_75, 16 GB, 3B model)"
+  echo "         --gres=gpu:a100:1                      (sm_80, 40 GB, up to 7B)"
+  echo "         --gres=gpu:a100:1 --constraint=a100@80g (80 GB, GLM-4.7-Flash)"
+  exit 1
+fi
+echo "=== compute capability ${CC:-unknown} -- supported ==="
+
 if [ "$MODEL" = "flash" ] || [ "$MODEL" = "air" ]; then
   # GLM-4.7-Flash is ~56 GiB of weights; Air is far larger. Refuse now rather
   # than spend ten minutes loading into a card that cannot hold it.
@@ -122,8 +157,12 @@ LOG="logs/vllm-${SLURM_JOB_ID:-local}.log"
 
 echo
 echo "=== starting vLLM on 127.0.0.1:${PORT} (log: $LOG) ==="
+# MAX_LEN is already exported above when it needs to be set, so it is inherited
+# here. Do NOT reintroduce a `${MAX_LEN:+MAX_LEN="$MAX_LEN"}` prefix: bash
+# recognises assignments before a command at parse time, so an expansion that
+# produces `MAX_LEN=32768` is treated as the command word instead, and the job
+# dies with "MAX_LEN=32768: command not found".
 MODEL="$MODEL" PORT="$PORT" VLLM_HOST=127.0.0.1 TP="$TP" \
-  ${MAX_LEN:+MAX_LEN="$MAX_LEN"} \
   "$TM_ROOT/cluster/serve_glm.sh" > "$LOG" 2>&1 &
 VLLM_PID=$!
 
