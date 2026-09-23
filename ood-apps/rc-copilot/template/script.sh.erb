@@ -80,6 +80,10 @@ trap cleanup EXIT INT TERM
 # So the backend comes up immediately. Its /api/health reports vLLM as
 # unreachable until the weights are in, which the extension already surfaces as
 # "rc-copilot is up, but it can't reach vLLM".
+# Absolute, because the script cd's into the backend before starting vLLM and
+# a relative path would drop the log somewhere unhelpful.
+VLLM_LOG="$(pwd)/vllm.log"
+
 cd "$TM_ROOT/backend" || exit 1
 
 export VLLM_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
@@ -104,14 +108,14 @@ echo "=== rc-copilot is listening; the extension can connect now ==="
 # ── vLLM, loopback only ───────────────────────────────────────────────────────
 echo "=== starting vLLM on 127.0.0.1:${VLLM_PORT} (model=${MODEL}) ==="
 MODEL="$MODEL" PORT="$VLLM_PORT" VLLM_HOST=127.0.0.1 TP="$TP" MAX_LEN="$MAX_LEN" \
-  "$TM_ROOT/cluster/serve_glm.sh" > "vllm.log" 2>&1 &
+  "$TM_ROOT/cluster/serve_glm.sh" > "$VLLM_LOG" 2>&1 &
 VLLM_PID=$!
 
 echo -n "loading weights (the UI will say the model is unreachable until this finishes)"
 READY=0
 for _ in $(seq 1 180); do   # up to ~30 min: a first-time AWQ download is slow
   if ! kill -0 "$VLLM_PID" 2>/dev/null; then
-    echo; echo "ERROR: vLLM exited early. Tail of vllm.log:"; tail -40 vllm.log
+    echo; echo "ERROR: vLLM exited early. Tail of vllm.log:"; tail -40 "$VLLM_LOG"
     echo "NOTE: rc-copilot is still up, so /api/health will report the model"
     echo "      as unreachable rather than the session simply vanishing."
     break

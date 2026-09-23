@@ -15,6 +15,21 @@ export PATH="$VIRTUAL_ENV/bin:$PATH"
 export HF_HOME="$TM_ROOT/.cache/huggingface"
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
+# Never contact huggingface.co from a compute node. Those nodes reach the
+# internet only through a site proxy, and the Hub call is flaky there: a
+# Qwen2.5-7B-AWQ launch logged "Could not reach the Hub ([Errno 99] Cannot
+# assign requested address)" and then hung for twelve minutes without ever
+# loading, despite the weights being cached locally.
+#
+# With this set, a cached model loads straight from disk and an uncached one
+# fails immediately with a clear message instead of hanging. Download new
+# models from a LOGIN node first:
+#
+#   source cluster/env.sh
+#   HF_HUB_OFFLINE=0 python -c "from huggingface_hub import snapshot_download; \
+#       snapshot_download('Qwen/Qwen2.5-7B-Instruct-AWQ')"
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+
 # vLLM scratch
 export VLLM_CACHE_ROOT="$TM_ROOT/.cache/vllm"
 export OUTLINES_CACHE_DIR="$TM_ROOT/.cache/outlines"
