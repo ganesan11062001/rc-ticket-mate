@@ -437,16 +437,51 @@
     renderResult(reply.data || {});
   }
 
+  /* The analysis half of the response, formatted for work notes. Deliberately
+     plain text: ServiceNow journal fields do not render markdown. */
+  function analysisText(data) {
+    const out = [];
+    if (data.problem_summary) out.push("Summary: " + data.problem_summary);
+    if (Array.isArray(data.suggested_steps) && data.suggested_steps.length) {
+      out.push("");
+      out.push("Suggested steps:");
+      data.suggested_steps.forEach((s, i) => out.push("  " + (i + 1) + ". " + s));
+    }
+    if (Array.isArray(data.caveats) && data.caveats.length) {
+      out.push("");
+      out.push("Check before sending:");
+      data.caveats.forEach((c) => out.push("  - " + c));
+    }
+    const conf = typeof data.confidence === "number"
+      ? " (confidence " + (data.confidence_label || "?") + " " +
+        Math.round(data.confidence * 100) + "%)" : "";
+    out.push("");
+    out.push("-- drafted by RC Copilot" + conf + ", not reviewed --");
+    return out.join("\n");
+  }
+
   async function renderResult(data) {
     const cfg = await chrome.runtime.sendMessage({ type: "GET_CONFIG" }).catch(() => null);
     const targetKey = (cfg && cfg.data && cfg.data.targetField) || "work_notes";
     const targetName = targetKey.replace("_", " ");
 
-    const target = findField(targetKey);
-    let wrote = false;
-    if (target && !target.readOnly && data.draft_response) {
-      wrote = setFieldValue(target, data.draft_response);
+    /* "both" splits the response: the analysis goes to work notes for the RC
+       engineer, the reply goes to additional comments for the researcher.
+       Writing draft_response into both would duplicate it and lose the
+       analysis. */
+    const writes = targetKey === "both"
+      ? [["work_notes", analysisText(data)], ["comments", data.draft_response]]
+      : [[targetKey, data.draft_response]];
+
+    const done = [];
+    const failed = [];
+    for (const [key, value] of writes) {
+      if (!value) continue;
+      const node = findField(key);
+      if (node && !node.readOnly && setFieldValue(node, value)) done.push(key);
+      else failed.push(key);
     }
+    const wrote = done.length > 0;
 
     const level = data.confidence_label || "unknown";
     const pct = typeof data.confidence === "number" ? Math.round(data.confidence * 100) : null;
@@ -464,11 +499,20 @@
         '<div class="rc-meter"><i style="width:' + (pct === null ? 0 : pct) + '%"></i></div>' +
       "</div>";
 
-    html += wrote
-      ? '<p class="rc-msg rc-ok"><span>Written into <b>' + escapeHtml(targetName) +
-        "</b>, unsaved. Review before Update.</span></p>"
-      : '<p class="rc-msg rc-warn"><span>No writable ' + escapeHtml(targetName) +
-        " field — copy it from below.</span></p>";
+    const pretty = (k) => escapeHtml(k.replace("_", " "));
+    if (wrote) {
+      html += '<p class="rc-msg rc-ok"><span>Written into <b>' +
+              done.map(pretty).join("</b> and <b>") +
+              "</b>, unsaved. Review before Update.";
+      if (failed.length) {
+        html += " Could not find: " + failed.map(pretty).join(", ") + ".";
+      }
+      html += "</span></p>";
+    } else {
+      html += '<p class="rc-msg rc-warn"><span>No writable ' +
+              writes.map(([k]) => pretty(k)).join(" or ") +
+              " field here — copy from below.</span></p>";
+    }
 
     if (data.problem_summary) {
       html += '<h3 class="rc-h">Summary</h3><p class="rc-summary">' +
@@ -519,9 +563,16 @@
     });
 
     $(".rc-insert").addEventListener("click", function () {
-      const node = findField(targetKey);
-      if (node && !node.readOnly && setFieldValue(node, area.value)) flash(this, "Inserted ✓");
-      else flash(this, "No field");
+      // The textarea holds the reply, so it goes to the customer-visible field
+      // in "both" mode and to the chosen field otherwise.
+      const replyKey = targetKey === "both" ? "comments" : targetKey;
+      const node = findField(replyKey);
+      let ok = !!(node && !node.readOnly && setFieldValue(node, area.value));
+      if (targetKey === "both") {
+        const wn = findField("work_notes");
+        if (wn && !wn.readOnly) setFieldValue(wn, analysisText(data));
+      }
+      flash(this, ok ? "Inserted ✓" : "No field");
     });
   }
 

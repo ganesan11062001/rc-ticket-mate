@@ -36,8 +36,12 @@
 
   function renderTargetWarning() {
     const warn = el("target-warning");
-    if (el("target-field").value === "comments") {
+    const v = el("target-field").value;
+    if (v === "comments") {
       warn.textContent = "Visible to whoever filed the ticket. The draft lands unsaved, but one wrong Update sends it.";
+      warn.className = "note danger";
+    } else if (v === "both") {
+      warn.textContent = "Summary, steps and caveats go to work notes; the reply goes to additional comments — which is customer visible.";
       warn.className = "note danger";
     } else {
       warn.textContent = "Internal only, so a mis-click can't reach the researcher.";

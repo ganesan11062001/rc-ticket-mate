@@ -54,6 +54,26 @@ case "$MODEL" in
     MAX_LEN="${MAX_LEN:-32768}"
     GLM_PARSERS=0
     ;;
+    t4-7b)
+      # T4 DEPLOYMENT OPTION. 4-bit AWQ, ~5.5 GB of weights, so it fits a 16 GB
+      # T4 with roughly 8 GB left for KV cache. vLLM permits AWQ from sm_75,
+      # which is exactly what a T4 is. Substantially stronger than the 3B at
+      # fp16, and it still leaves headroom.
+      MODEL_ID="Qwen/Qwen2.5-7B-Instruct-AWQ"
+      SERVED_NAME="qwen2.5-7b-instruct-awq"
+      DEFAULT_TP=1
+      MAX_LEN="${MAX_LEN:-16384}"
+      GLM_PARSERS=0
+      ;;
+    t4-14b)
+      # Also T4-capable, but tight: ~9.5 GB of 4-bit weights leaves ~4 GB for
+      # KV, roughly 20k tokens. Shorter context, less concurrency.
+      MODEL_ID="Qwen/Qwen2.5-14B-Instruct-AWQ"
+      SERVED_NAME="qwen2.5-14b-instruct-awq"
+      DEFAULT_TP=1
+      MAX_LEN="${MAX_LEN:-8192}"
+      GLM_PARSERS=0
+      ;;
   small)
     # Not for production drafting -- this exists so the end-to-end pipeline and
     # the prompt can be exercised without queueing for an A100. ~6 GB in bf16,
@@ -65,8 +85,8 @@ case "$MODEL" in
     GLM_PARSERS=0
     ;;
   *)
-    echo "error: MODEL must be 'flash', 'air', 'qwen7b', 'qwen14b' or 'small'" \
-         "(got '$MODEL')" >&2
+    echo "error: MODEL must be one of flash, air, qwen7b, qwen14b," \
+           "t4-7b, t4-14b, small (got '$MODEL')" >&2
     exit 1
     ;;
 esac

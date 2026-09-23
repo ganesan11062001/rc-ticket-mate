@@ -22,6 +22,8 @@ GPU_LAYOUT="<%= context.gpu_layout %>"
 # leaving ~12.5 GiB -> roughly 124,000 KV tokens, which is still ~3.8x
 # concurrency at a 32K context. A ticket plus prompt is a few thousand tokens.
 case "$GPU_LAYOUT" in
+  t4)   TP=1; MAX_LEN=16384  ;;
+  1x40) TP=1; MAX_LEN=32768  ;;
   1x80) TP=1; MAX_LEN=32768  ;;
   4x)   TP=4; MAX_LEN=131072 ;;
   *)    TP=2; MAX_LEN=131072 ;;
@@ -30,6 +32,9 @@ esac
 # The model choice overrides the layout: the 3B test model is single-GPU
 # whatever was selected, and Air only ever runs on four.
 case "$MODEL" in
+  t4-7b)  TP=1; MAX_LEN=16384 ;;
+  t4-14b) TP=1; MAX_LEN=8192  ;;
+  qwen7b) TP=1; MAX_LEN=32768 ;;
   small) TP=1; MAX_LEN=16384  ;;
   air)   TP=4; MAX_LEN=131072 ;;
 esac
