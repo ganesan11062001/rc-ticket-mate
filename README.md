@@ -46,6 +46,30 @@ and the **model runs in the user's own Slurm allocation**.
 
 **Nothing is ever submitted automatically.** A human reviews and clicks Update.
 
+### Grounded in the RC website
+
+Each ticket is also matched against the rc.northeastern.edu website and the
+rc-docs.northeastern.edu documentation, served from a Neo4j knowledge graph by
+[rc_kg](../rc_kg) in the same job. The most
+relevant sections go into the prompt as numbered sources; the model cites them
+as `[S1]`, and the backend turns those into a numbered **References** block in
+the reply (and a Sources line in the steps) with the exact page links. The
+model never writes a URL: one it writes anyway is checked against what was
+retrieved and removed if it is not there, with a caveat saying so.
+
+rc_kg starts automatically with the session and needs no setup beyond a graph
+snapshot (`/projects/rc/projects/rc_kg/scripts/build_graph.sh`, run once). If
+it is missing or still loading, drafts work exactly as before, with a caveat
+that they were not checked against the website. `/api/health` reports it as
+`knowledge_graph`.
+
+Requires the rc_kg HTTP API **1.x** (tested against rc_kg `v1.1.0`; see its
+`API_CONTRACT.md`). The backend checks `api_version` and, on a different major
+version, drafts ungrounded with a caveat naming both versions rather than
+misreading fields. `tests/rc_kg/run_contract.sh` (no GPU, ~2 min) checks the
+integration end to end: grounding and citations against a real rc_kg, an
+incompatible rc_kg refused, and rc_kg down.
+
 ---
 
 ## Quick start
@@ -88,6 +112,7 @@ Paste tickets at `http://127.0.0.1:8080` and edit
 | [`ood-apps/rc-copilot/`](ood-apps/rc-copilot) | OOD interactive app: vLLM + backend in one job |
 | [`ood-apps/capture-test/`](ood-apps/capture-test) | Same, no model — stores what's sent, for testing the data path |
 | [`cluster/`](cluster) | Slurm launchers, install and diagnostic scripts |
+| [`tests/`](tests) | Standalone inference test — run it on the cluster, no browser or OOD needed |
 | [`dist/`](dist) | Packaged extension zip |
 | [`docs/`](docs) | Diagram and extension guide |
 
@@ -113,8 +138,11 @@ iframe, Next Experience hides fields in shadow DOM, Service Portal uses its own
 id convention. Rather than three sets of selectors, fields are found by a
 shadow-piercing DOM walk matched on id, name, `aria-label` and label text.
 
-**Drafts go to work notes, not customer-visible comments** — so a mis-click on
-Update can't send unreviewed model output to a researcher.
+**Drafts go to work notes by default**, not to customer-visible comments — so a
+mis-click on Update can't send unreviewed model output to a researcher. Two
+other targets can be chosen in the toolbar popup: *additional comments*, and
+*both* (analysis to work notes, reply to comments). Nothing is ever saved
+either way; a human still clicks Update.
 
 ---
 
