@@ -1,195 +1,108 @@
-# RC Copilot
+# TicketMate
 
-**Draft replies to ServiceNow tickets using a private LLM running inside your
-own HPC allocation.** Built for the Research Computing team at Northeastern.
+Drafts replies to Research Computing ServiceNow tickets with a model served
+on the cluster, grounded in the RC website and rc-docs.
 
-One click on a ticket reads it, sends it to a model running in your Slurm job,
-and writes a draft into the work notes for you to review. No ticket data leaves
-the university, and no ServiceNow API access is needed.
-
-> **Status:** working prototype, end to end. A real model has produced a
-> schema-valid draft on the cluster. Draft *quality* is now the open problem —
-> see [Status](#status).
-
----
-
-## The problem
-
-RC staff answer a lot of tickets that rhyme: out-of-memory kills, quota limits,
-module and environment mistakes, access requests. Writing each reply from
-scratch is repetitive.
-
-Two constraints shaped the whole design:
-
-- **No ServiceNow API access.** Org policy doesn't grant it, so anything that
-  reads a ticket has to work from what's already on screen.
-- **Ticket text can't leave Northeastern.** It contains researcher names and
-  unpublished work, which rules out any hosted LLM API.
-
-Together they force an unusual shape: the **browser** is the integration point,
-and the **model runs in the user's own Slurm allocation**.
-
----
-
-## How it works
-
-![RC Copilot system architecture](docs/rc-architecture.png)
-
-
-1. You open a ticket and click **Draft reply**.
-2. The extension reads the ticket and offers a box for anything the model should
-   know that the ticket doesn't say.
-3. It goes through Open OnDemand's authenticated proxy to a FastAPI service in
-   your Slurm job, which prompts a GLM model served by vLLM.
-4. You get back a summary, suggested steps, a confidence score, caveats, and a
-   ready-to-edit draft — written into **work notes**, unsaved.
-
-**Nothing is ever submitted automatically.** A human reviews and clicks Update.
-
-### Grounded in the RC website
-
-Each ticket is also matched against the rc.northeastern.edu website and the
-rc-docs.northeastern.edu documentation, served from a Neo4j knowledge graph by
-[rc_kg](../rc_kg) in the same job. The most
-relevant sections go into the prompt as numbered sources; the model cites them
-as `[S1]`, and the backend turns those into a numbered **References** block in
-the reply (and a Sources line in the steps) with the exact page links. The
-model never writes a URL: one it writes anyway is checked against what was
-retrieved and removed if it is not there, with a caveat saying so.
-
-rc_kg starts automatically with the session and needs no setup beyond a graph
-snapshot (`/projects/rc/projects/rc_kg/scripts/build_graph.sh`, run once). If
-it is missing or still loading, drafts work exactly as before, with a caveat
-that they were not checked against the website. `/api/health` reports it as
-`knowledge_graph`.
-
-Requires the rc_kg HTTP API **1.x** (tested against rc_kg `v1.1.0`; see its
-`API_CONTRACT.md`). The backend checks `api_version` and, on a different major
-version, drafts ungrounded with a caveat naming both versions rather than
-misreading fields. `tests/rc_kg/run_contract.sh` (no GPU, ~2 min) checks the
-integration end to end: grounding and citations against a real rc_kg, an
-incompatible rc_kg refused, and rc_kg down.
-
----
-
-## Quick start
-
-**1 — Launch the backend.** In Open OnDemand: *Develop → My Sandbox Apps →
-RC Copilot → Launch*. It defaults to a small 3B model on any free GPU, which
-schedules in seconds; switch to GLM-4.7-Flash once you're happy it works.
-
-**2 — Install the extension.** Download
-[`dist/rc-copilot-extension.zip`](dist/rc-copilot-extension.zip),
-unzip it, then `chrome://extensions` → Developer mode → **Load unpacked** →
-select the folder.
-
-**3 — Open OOD's "My Interactive Sessions".** The extension picks up the
-address and token on its own; there's nothing to copy.
-
-**4 — Open a ticket** and click **Draft reply**.
-
-### Without the browser at all
-
-The fastest loop for tuning the prompt needs neither the extension nor OOD:
-
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --port 8080
+```
+/projects/rc/projects/ticketmate/     this repository
+├── ticketmate/    the app: FastAPI backend, Chrome extension, OOD app, Slurm scripts
+├── rc-kg/         the knowledge graph: Neo4j snapshot builds and the retrieval API
+├── rc-copilot/    published OOD releases (not in git; written by publish.sh)
+├── .uv/           shared Python toolchain (not in git)
+└── .cache/        model weights and compile caches (not in git)
 ```
 
-Paste tickets at `http://127.0.0.1:8080` and edit
-[`app/prompts.py`](backend/app/prompts.py).
+## Running it
 
----
+### Using it (RC team members)
 
-## Layout
+```bash
+/projects/rc/projects/ticketmate/rc-copilot/install.sh     # once: links the OOD app into ~/ondemand/dev
+```
 
-| Path | What it is |
-| --- | --- |
-| [`backend/`](backend) | FastAPI service — prompt, vLLM client, auth. Knows nothing about ServiceNow |
-| [`extension/`](extension) | Chrome MV3 extension |
-| [`ood-apps/rc-copilot/`](ood-apps/rc-copilot) | OOD interactive app: vLLM + backend in one job |
-| [`ood-apps/capture-test/`](ood-apps/capture-test) | Same, no model — stores what's sent, for testing the data path |
-| [`cluster/`](cluster) | Slurm launchers, install and diagnostic scripts |
-| [`tests/`](tests) | Standalone inference test — run it on the cluster, no browser or OOD needed |
-| [`dist/`](dist) | Packaged extension zip |
-| [`docs/`](docs) | Diagram and extension guide |
+1. **Open OnDemand → Develop → My Sandbox Apps → RC Copilot → Launch.** The
+   defaults (Qwen2.5-7B AWQ on any free GPU) schedule in seconds.
+2. **Install the extension once.** Unzip `rc-copilot/rc-copilot-extension.zip`,
+   then in Chrome go to `chrome://extensions`, turn on Developer mode, click
+   **Load unpacked** and select the folder.
+3. **Open My Interactive Sessions** in OOD. The extension picks up the session
+   address and token on its own.
+4. **Open a ticket in ServiceNow and click Draft reply.** The draft is written
+   into work notes unsaved, for you to check, edit and save.
 
-Helper scripts live in `cluster/`: `install_vllm.sh --check`, `check_gpus.sh`,
-`vllm_status.sh`, `smoke_test.py`.
+The model takes a few minutes to load and the knowledge graph 1–2 minutes;
+the panel shows progress meanwhile. More in
+[ticketmate/ood-apps/MEMBERS.md](ticketmate/ood-apps/MEMBERS.md).
 
----
+### Setting it up (maintainer, once per checkout)
 
-## A few things worth knowing
+Everything already exists in this checkout. Re-run a step only when what it
+builds has to change.
 
-**The structured output is validated, not trusted.** The model returns JSON;
-three strategies are tried (constrained decoding → JSON mode → prompt-only) and
-whatever comes back is parsed tolerantly and checked against a schema. The
-high/medium/low confidence thresholds are applied *server-side* — the model
-supplies a number, we decide what it means.
+```bash
+cd /projects/rc/projects/ticketmate
 
-**The extension can't fetch from the page.** An MV3 content script runs in the
-page's origin and is subject to CORS, so all network I/O goes through the
-service worker, where `host_permissions` applies instead.
+# Model server: vLLM 0.29 (+cu129) into ticketmate/.venv. --check changes nothing.
+ticketmate/cluster/install_vllm.sh
 
-**Three ServiceNow UIs, one content script.** Classic puts the form in an
-iframe, Next Experience hides fields in shadow DOM, Service Portal uses its own
-id convention. Rather than three sets of selectors, fields are found by a
-shadow-piercing DOM walk matched on id, name, `aria-label` and label text.
+# Backend: FastAPI into ticketmate/backend/.venv
+python3 -m venv ticketmate/backend/.venv
+ticketmate/backend/.venv/bin/pip install -r ticketmate/backend/requirements.txt
 
-**Drafts go to work notes by default**, not to customer-visible comments — so a
-mis-click on Update can't send unreviewed model output to a researcher. Two
-other targets can be chosen in the toolbar popup: *additional comments*, and
-*both* (analysis to work notes, reply to comments). Nothing is ever saved
-either way; a human still clicks Update.
+# Knowledge graph: Neo4j and a venv, then both graph snapshots (~4 min each,
+# needs network to rc.northeastern.edu, so run it from a login node)
+rc-kg/scripts/install_neo4j.sh
+python3 -m venv rc-kg/.venv
+rc-kg/.venv/bin/pip install -r rc-kg/requirements.txt
+rc-kg/scripts/build_graph.sh --all
 
----
+# Release the OOD app to rc-copilot/ -- this changes everyone's app at once
+ticketmate/ood-apps/publish.sh
+```
 
-## Status
+Model weights are cached in `.cache/huggingface` the first time a model is
+used. To keep the graph current, run `rc-kg/scripts/rebuild.sbatch` weekly from
+`scrontab` (instructions are in its header). `publish.sh --list` and
+`publish.sh --rollback` manage releases.
 
-**Proven**
+**After moving or renaming the checkout, republish.** OOD runs a copy of the
+session script, and the only place that copy learns the checkout's location is
+the `ticketmate.env` that `publish.sh` writes beside it.
 
-- Full data path with real tickets: ServiceNow → extension → OOD → Slurm job →
-  disk, including ticket-number extraction
-- Auth against tampered signatures and forged expiries
-- The OOD proxy path, field matching across all three UIs, partition/GPU limits
+### Without OOD
 
-- **Real inference on the cluster.** Qwen2.5-3B on a T4 (`d1025`) produced a
-  schema-valid draft from the real prompt in 13.9s — summary, 5 steps,
-  confidence 0.80, 4 caveats, a 729-character reply
+| Goal | Command | Details |
+| --- | --- | --- |
+| Model + backend + graph in one batch job | `sbatch --export=ALL,MODEL=t4-7b --gres=gpu:t4:1 ticketmate/cluster/serve_stack.sbatch` | [EXTENSION.md](ticketmate/docs/EXTENSION.md) |
+| Tune the prompt in the web page, against any vLLM endpoint | `cd ticketmate/backend && .venv/bin/uvicorn app.main:app --port 8080` | [backend/README.md](ticketmate/backend/README.md) |
+| Check inference works on a GPU | `sbatch --gres=gpu:t4:1 ticketmate/tests/run_inference_test.sbatch` | [tests/README.md](ticketmate/tests/README.md) |
+| Serve the graph on its own | `rc-kg/scripts/serve_kg.sh --port 8090` | [rc-kg/README.md](rc-kg/README.md) |
 
-**Not yet good enough**
+### Tests
 
-- **Draft quality.** The first real run exposed three prompt defects: the model
-  copied caveats verbatim from the prompt's example list (3 of 4 were
-  contradicted by the ticket), signed off `[Your Name]`, and gave generic
-  "check your versions" advice where the error text already named the fault.
-  All three are now addressed in `prompts.py` and need re-testing
-- The GLM stack hasn't completed a run on a GPU node — only the 3B model has
+```bash
+ticketmate/tests/rc_kg/run_contract.sh      # TicketMate against a real rc-kg, no GPU, ~2 min
+rc-kg/scripts/contract_test.sh              # rc-kg's side of the API contract
+(cd rc-kg && .venv/bin/python -m pytest tests -q)      # rc-kg unit tests
+ticketmate/tests/startup/run_slow_start.sh  # startup progress display, no GPU
+ticketmate/tests/ui/run.sh                  # extension and web UI, headless browser
+```
 
-**Next step:** re-run `tests/` with the revised prompt, then work through 20–30
-real tickets, tuning [`app/prompts.py`](backend/app/prompts.py) until the drafts
-are worth sending.
+## How the pieces connect
 
----
+The two services talk only over rc-kg's versioned HTTP API
+([rc-kg/API_CONTRACT.md](rc-kg/API_CONTRACT.md)); a change to it bumps the
+version and runs both contract tests:
 
-## Documentation
+```bash
+rc-kg/scripts/contract_test.sh             # provider side
+ticketmate/tests/rc_kg/run_contract.sh     # consumer side
+```
 
-| Document | For |
-| --- | --- |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Full design: components, security model, design decisions, deployment |
-| [VLLM_SETUP.md](VLLM_SETUP.md) | Model layer: which GLM fits A100 hardware, and the CUDA install trap |
-| [docs/EXTENSION.md](docs/EXTENSION.md) | Extension + OOD apps in detail |
-| [backend/README.md](backend/README.md) | Backend configuration and API |
+No script hard-codes this location: each finds the repository from its own
+path, and the OOD app is told it when published. To move the checkout, move
+the directory and republish (`ticketmate/ood-apps/publish.sh`).
 
----
-
-## Caveats
-
-This is a prototype built against one institution's setup. Hostnames, partition
-names and GPU types are Northeastern-specific and would need changing elsewhere.
-
-Every draft is a starting point. The model can be confidently wrong — that's why
-`caveats` is a first-class field in the response and is shown but deliberately
-never written into the ticket.
+- App: [ticketmate/README.md](ticketmate/README.md)
+- Knowledge graph: [rc-kg/README.md](rc-kg/README.md)
+- For RC members: [ticketmate/ood-apps/MEMBERS.md](ticketmate/ood-apps/MEMBERS.md)

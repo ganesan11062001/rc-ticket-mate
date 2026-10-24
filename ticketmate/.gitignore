@@ -1,0 +1,42 @@
+# --- secrets: never commit ---
+.env
+.env.local
+*.token
+.rc_copilot/
+
+# --- captured ticket data (may contain researcher PII) ---
+rc_copilot_captures/
+captures/
+
+# --- environments and caches (tens of GB) ---
+.venv/
+venv/
+.uv/
+.cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- run artifacts ---
+logs/
+# ...but tests/logs must EXIST at submission time: Slurm opens --output before
+# the job script runs and will not create the directory itself. Git cannot
+# re-include a file under an excluded directory, so un-exclude the directory
+# first, then re-exclude its contents apart from the keepfile.
+!tests/logs/
+tests/logs/*
+!tests/logs/.gitkeep
+*.log
+slurm-*.out
+*.sbatch.out
+
+# --- build artifacts ---
+*.zip
+# ...but ship the packaged extension, so it can be downloaded directly
+!dist/*.zip
+
+# --- editor / agent ---
+.claude/
+.vscode/
+.idea/
+.DS_Store

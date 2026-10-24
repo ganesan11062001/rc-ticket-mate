@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RC Copilot</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div>
+        <h1>RC Copilot</h1>
+        <p class="tagline">Draft a reply to a Research Computing ticket. Review before sending — nothing is sent anywhere automatically.</p>
+      </div>
+      <div class="header-right">
+        <div class="health" id="health" title="Status of the vLLM model server">
+          <span class="dot" id="health-dot"></span>
+          <span id="health-text">checking model server…</span>
+        </div>
+        <div class="session" id="session" hidden>
+          <span id="session-text"></span>
+          <button id="signout-btn" class="link" type="button">Sign out</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap" id="login-main" hidden>
+    <section id="login" class="card login">
+      <h2>Sign in</h2>
+      <p class="hint">
+        This backend is reachable by other users on the cluster, so drafting is
+        locked behind the access token printed in the terminal where you started
+        <code>uvicorn</code>.
+      </p>
+      <label class="field-label" for="access-token">Access token</label>
+      <input id="access-token" type="password" autocomplete="off" spellcheck="false"
+             placeholder="paste the token from the server console" />
+      <div class="actions">
+        <button id="login-btn" class="primary" type="button">Sign in</button>
+        <span class="hint" id="login-hint"></span>
+      </div>
+      <p id="login-error" class="status error" hidden></p>
+    </section>
+  </main>
+
+  <main class="wrap" id="app-main" hidden>
+    <section class="card">
+      <label class="field-label" for="ticket-text">Paste ticket details</label>
+      <p class="hint">Short description, description, work notes — whatever you copied out of ServiceNow. Avoid pasting anything you wouldn't want processed by the model.</p>
+      <textarea
+        id="ticket-text"
+        rows="14"
+        placeholder="e.g.&#10;Short description: Job killed on Discovery&#10;&#10;Description: My job 41823991 keeps dying after about 10 minutes. I'm running a Python script on the short partition and I see &quot;slurmstepd: error: Detected 1 oom-kill event&quot; in the log. It worked fine on a smaller dataset last week.&#10;&#10;Work notes: ..."
+        spellcheck="false"
+      ></textarea>
+
+      <label class="field-label" for="extra-instructions">Instructions for the model <span class="optional">optional</span></label>
+      <p class="hint">Anything the model should know that the ticket doesn't say. Same field the extension sends, so prompt changes can be tested here.</p>
+      <textarea
+        id="extra-instructions"
+        rows="3"
+        placeholder="e.g. This user is on an older torch build — check ABI compatibility before suggesting an upgrade."
+        spellcheck="false"
+      ></textarea>
+
+      <div class="actions">
+        <button id="draft-btn" class="primary">Draft Response</button>
+        <button id="clear-btn" class="secondary" type="button">Clear</button>
+        <span class="char-count" id="char-count">0 characters</span>
+      </div>
+    </section>
+
+    <section id="status" class="status" hidden></section>
+
+    <section id="results" class="results" hidden>
+      <div class="card">
+        <div class="result-head">
+          <h2>Problem summary</h2>
+          <span class="badge" id="confidence-badge"></span>
+        </div>
+        <p id="problem-summary"></p>
+        <p class="meta" id="result-meta"></p>
+      </div>
+
+      <div class="card">
+        <h2>Suggested steps</h2>
+        <ol id="suggested-steps"></ol>
+      </div>
+
+      <div class="card" id="caveats-card">
+        <h2>Check before sending</h2>
+        <ul id="caveats"></ul>
+      </div>
+
+      <div class="card">
+        <div class="result-head">
+          <h2>Draft response</h2>
+          <button id="copy-btn" class="secondary" type="button">Copy to clipboard</button>
+        </div>
+        <textarea id="draft-response" rows="16" spellcheck="true"></textarea>
+        <p class="hint">Editable — tweak it here, then copy it into ServiceNow.</p>
+      </div>
+
+      <div class="card" id="feedback-card">
+        <div class="result-head">
+          <h2>How was this draft?</h2>
+          <span class="hint" id="fb-id"></span>
+        </div>
+        <div class="eval" id="eval-summary"></div>
+        <div class="fb-row" data-key="thumbs">
+          <span class="fb-label">Helpful?</span>
+          <button type="button" class="fb-chip" data-score="1">👍 Helpful</button>
+          <button type="button" class="fb-chip" data-score="0">👎 Not helpful</button>
+        </div>
+        <div class="fb-row" data-key="correctness">
+          <span class="fb-label">Correct?</span>
+          <button type="button" class="fb-chip" data-score="1">Correct</button>
+          <button type="button" class="fb-chip" data-score="0.5">Partly</button>
+          <button type="button" class="fb-chip" data-score="0">Wrong</button>
+        </div>
+        <div class="fb-row" data-key="usage">
+          <span class="fb-label">Did you use it?</span>
+          <button type="button" class="fb-chip" data-score="1" data-value="used_as_is">As is</button>
+          <button type="button" class="fb-chip" data-score="0.5" data-value="edited">Edited</button>
+          <button type="button" class="fb-chip" data-score="0" data-value="not_used">Not used</button>
+        </div>
+        <div class="fb-row" data-key="rating">
+          <span class="fb-label">Rating</span>
+          <button type="button" class="fb-chip fb-star" data-score="0" data-value="1">1</button>
+          <button type="button" class="fb-chip fb-star" data-score="0.25" data-value="2">2</button>
+          <button type="button" class="fb-chip fb-star" data-score="0.5" data-value="3">3</button>
+          <button type="button" class="fb-chip fb-star" data-score="0.75" data-value="4">4</button>
+          <button type="button" class="fb-chip fb-star" data-score="1" data-value="5">5</button>
+        </div>
+        <label for="fb-comment" class="fb-label">Comment (optional)</label>
+        <textarea id="fb-comment" rows="2" placeholder="What was wrong, missing, or especially good?"></textarea>
+        <details class="fb-more">
+          <summary>Paste the reply you actually sent (optional)</summary>
+          <textarea id="fb-correction" rows="6" placeholder="Used to measure how much the draft needed editing."></textarea>
+        </details>
+        <div class="actions">
+          <button id="fb-submit" class="primary" type="button" disabled>Send feedback</button>
+          <span class="hint" id="fb-status"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
