@@ -39,6 +39,7 @@ it some other way, e.g. a project's name instead of its number).
 """
 
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -47,7 +48,15 @@ from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
+# The repository ships one generic example. RC's own procedures are internal
+# and live outside it (/projects/rc/projects/rc-playbooks); PLAYBOOK_DIR,
+# set by cluster/env.sh when that directory exists, points the loader there.
 PLAYBOOK_DIR = Path(__file__).resolve().parent / "playbooks"
+
+
+def playbook_dir() -> str:
+    """The playbook directory in use: $PLAYBOOK_DIR, else the bundled example."""
+    return os.environ.get("PLAYBOOK_DIR") or str(PLAYBOOK_DIR)
 MAX_PLAYBOOKS = 2          # per draft; each runbook is ~1k tokens
 MAX_FIELD_VALUES = 6
 
@@ -63,6 +72,7 @@ class Playbook:
     # (fields any one of which satisfies it, what to ask for when none was found)
     requires: List["tuple[List[str], str]"] = field(default_factory=list)
     on: str = "researcher"          # "researcher" | "instructions": which text `match` reads
+    route: str = "request"          # rc-agent's agent routing; read and kept, unused here
     path: str = ""
 
     def missing(self, values: Dict[str, List[str]]) -> List[str]:
@@ -107,6 +117,10 @@ def parse(text: str, path: str = "") -> Playbook:
                 pb.name = value
             elif key == "title":
                 pb.title = value
+            elif key == "route":
+                if value not in ("incident", "request"):
+                    raise ValueError("%s:%d: 'route' is 'incident' or 'request'" % (path, n))
+                pb.route = value
             elif key == "on":
                 if value not in ("researcher", "instructions"):
                     raise ValueError("%s:%d: 'on' is 'researcher' or 'instructions'" % (path, n))
@@ -133,9 +147,10 @@ def parse(text: str, path: str = "") -> Playbook:
 
 
 @lru_cache
-def load(directory: str = str(PLAYBOOK_DIR)) -> List[Playbook]:
+def load(directory: str = "") -> List[Playbook]:
     """Every playbook, sorted by file name. A file that does not parse is
     skipped with an error in the log, so one bad edit cannot stop drafting."""
+    directory = directory or playbook_dir()
     out: List[Playbook] = []
     for p in sorted(Path(directory).glob("*.md")):
         try:
