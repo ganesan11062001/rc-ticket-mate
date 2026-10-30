@@ -46,6 +46,8 @@ backend() {   # backend <kg_url> [run_log_dir] [vllm_port] -> prints port
 VP="$(free)"; $PY "$HERE/stub_vllm.py" "$VP" & PIDS+=($!)
 VRP="$(free)"; STUB_REJECT_SCHEMA=1 $PY "$HERE/stub_vllm.py" "$VRP" & PIDS+=($!)
 export RC_KG_API_TOKEN="contract-$$"
+export RC_KG_REFRESH_LOOP=off        # tests never rebuild or switch the shared graph
+export RC_TRACES_DIR="$WORK/traces"     # metrics, spans: not the real traces/
 KGP="$(free)"; "$RC_KG_ROOT/scripts/serve_kg.sh" --port "$KGP" >"$WORK/kg.log" 2>&1 & PIDS+=($!)
 KWP="$(free)"; "$RC_KG_ROOT/scripts/serve_kg.sh" --port "$KWP" --variant website >"$WORK/kg-website.log" 2>&1 & PIDS+=($!)
 FKP="$(free)"; $PY "$HERE/fake_kg_v2.py" "$FKP" & PIDS+=($!)

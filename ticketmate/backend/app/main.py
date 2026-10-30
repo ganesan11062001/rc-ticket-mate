@@ -15,7 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, evaluators, kg_client, lookups, playbooks, runlog, ticket_context, tracing
+from . import auth, evaluators, kg_client, lookups, ops_store, otel, playbooks, runlog, ticket_context, tracing
 from .config import get_settings
 from .llm_client import LLMError, check_health, context_window, generate_draft, token_breakdown
 from .prompts import SYSTEM_PROMPT, instruction_wants_sources
@@ -332,6 +332,7 @@ async def draft(request: DraftRequest):
         tr.root.usage = {k: tokens.get(k) for k in ("prompt_tokens", "completion_tokens", "total_tokens")}
         tr.root.tags.append("model:" + (model or "?"))
         tr.finish({"draft": draft_out} if draft_out else None, error=error)
+        otel.export(tr.to_dict())             # traces/$USER/spans/, and a collector when configured
         return runlog.record(
             request_id=request_id,
             ticket_number=request.ticket_number,
@@ -502,6 +503,16 @@ async def draft(request: DraftRequest):
         logger.info("run recorded | id=%s -> %s", request_id, saved)
         # LLM-as-judge in the background; it appends its grades beside the run.
         evaluators.schedule_judge(request_id, ticket, kg_prompt_context, response.model_dump())
+
+    # LLMOps: one metrics row per draft in traces/$USER/metrics/ (app/ops_store.py); no ticket text.
+    ops_store.append("metrics", {
+        "ts": started_at, "request_id": request_id, "ticket": thread, "model": model_name, "mode": "pipeline",
+        "kg_status": kg.status, "sources": len(kg.sources), "low_confidence": kg.low_confidence,
+        "references": len(references), "urls_removed": len((cite_trace or {}).get("removed_urls") or []),
+        "playbooks": [m.playbook.name for m in found_playbooks], "lookups": len(found_lookups),
+        "assertions_failed": failed, "confidence": response.confidence, "latency_ms": elapsed_ms,
+        "timings_ms": timings, "tokens": tokens, "prompt_version": _PROMPT_VERSION.get("version"),
+    })
 
     if settings.debug:
         logger.debug("draft response | id=%s %s", request_id, response.model_dump())
