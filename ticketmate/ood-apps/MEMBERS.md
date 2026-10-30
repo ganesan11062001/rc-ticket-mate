@@ -146,7 +146,7 @@ Each session's logs are in
 
 | | where it lives | who can read it |
 |---|---|---|
-| ticket text, prompts, drafts | your Slurm job; logs in `<repo>/traces/$USER/` (mode 700) | you |
+| ticket text, prompts, drafts | your Slurm job; logs in `<repo>/traces/$USER/`, or `/scratch/$USER/rc_copilot_traces` if you cannot write the repository (mode 700) | you |
 | session access token | the OOD session card (owner only) | you |
 | model caches | `/scratch/$USER/rc_copilot_cache` | you |
 | the app, models, knowledge graph | `/projects/rc/projects/ticketmate` | RC team, read-only |
