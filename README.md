@@ -14,7 +14,7 @@ writes the draft into it, unsaved, for a person to review and send.
 | maintaining or developing it | this page, then the READMEs below |
 
 ```
-/projects/rc/projects/ticketmate/     this repository
+/projects/rc/projects/rc-copilot/ticketmate/     this repository
 ├── ticketmate/    the app: FastAPI backend, Chrome extension, OOD app, Slurm scripts, tests
 ├── rc-kg/         the knowledge graph: builds the Neo4j snapshot, serves retrieval over HTTP
 ├── rc-copilot/    published OOD releases + the extension zip (not in git; written by publish.sh)
@@ -36,7 +36,7 @@ it when published.
 The full guide is [MEMBERS.md](ticketmate/ood-apps/MEMBERS.md). In short:
 
 ```bash
-/projects/rc/projects/ticketmate/rc-copilot/install.sh     # once: symlinks the app into ~/ondemand/dev
+/projects/rc/projects/rc-copilot/ticketmate/rc-copilot/install.sh     # once: symlinks the app into ~/ondemand/dev
 ```
 
 1. **Extension, once:** unzip `rc-copilot/rc-copilot-extension.zip` on your
@@ -51,7 +51,7 @@ Everything already exists in this checkout. Re-run a step only when what it
 builds has to change.
 
 ```bash
-cd /projects/rc/projects/ticketmate
+cd /projects/rc/projects/rc-copilot/ticketmate
 
 # Model server: vLLM 0.29 (+cu129) into ticketmate/.venv. --check changes nothing.
 ticketmate/cluster/install_vllm.sh
